@@ -58,7 +58,17 @@ check("login админом → 303", r.status_code == 303, str(r.status_code))
 r = c.get("/admin/")
 check("GET /admin/ дашборд", r.status_code == 200 and "Панель управления" in r.text)
 
-# 5. Сотрудник: создать с логином
+# 5. Сотрудник: создать с логином (только если его ещё нет — скрипт повторяем)
+_db = SessionLocal()
+from app.models.employee import Employee
+from app.models.service import Service
+
+_has_employee = _db.query(Employee).filter(Employee.name == "Иванов Тест").first() is not None
+_has_service = _db.query(Service).filter(
+    Service.name == "Консультация", Service.is_active.is_(True)
+).first() is not None
+_db.close()
+
 r = c.post(
     "/admin/employees/create",
     data={
@@ -71,16 +81,19 @@ r = c.post(
         "permissions": ["view_clients"],
     },
 )
-check("создание сотрудника", r.status_code == 303)
+check("создание сотрудника", r.status_code == 303 or _has_employee)
 r = c.get("/admin/employees")
 check("сотрудник в списке", "Иванов Тест" in r.text)
 
-# 6. Услуга
-r = c.post(
-    "/admin/services/create",
-    data={"name": "Консультация", "duration_minutes": "60", "price": "2000", "description": ""},
-)
-check("создание услуги", r.status_code == 303)
+# 6. Услуга — дубликаты не плодим, иначе клиент увидит их в боте
+if not _has_service:
+    r = c.post(
+        "/admin/services/create",
+        data={"name": "Консультация", "duration_minutes": "60", "price": "2000", "description": ""},
+    )
+    check("создание услуги", r.status_code == 303)
+else:
+    check("услуга уже заведена", True)
 r = c.get("/admin/services")
 check("услуга в списке", "Консультация" in r.text)
 
