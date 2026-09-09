@@ -1,0 +1,32 @@
+# Локальная разработка: только инфраструктура.
+# Приложение (api/bot) запускается на хосте с hot-reload:
+#   uvicorn app.main:app --reload
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bc_postgres
+    environment:
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: booking
+    # 5433 на хосте: на машине разработчика может быть свой локальный
+    # PostgreSQL на 5432 — не конфликтуем с ним
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bc_redis
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

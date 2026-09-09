@@ -1,0 +1,39 @@
+# ==== Секреты (никогда не коммитятся) ====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ==== Python ====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ==== Docker volumes ====
+docker/volumes/
+
+# ==== Логи и дампы БД (могут содержать персональные данные) ====
+logs/
+*.log
+*.sql
+*.dump
+backups/
+
+# ==== IDE / ОС ====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ==== Google OAuth артефакты ====
+token*.json
+client_secret*.json

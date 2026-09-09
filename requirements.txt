@@ -1,0 +1,37 @@
+# Web / API
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+pydantic-settings>=2.7
+Jinja2>=3.1.5
+python-multipart>=0.0.20
+itsdangerous>=2.2
+
+# БД
+SQLAlchemy>=2.0.36
+alembic>=1.14
+psycopg[binary]>=3.2
+redis>=5.2
+
+# Telegram
+aiogram>=3.15
+
+# HTTP-клиенты
+httpx>=0.28
+
+# Безопасность
+bcrypt>=4.2
+PyJWT>=2.10
+cryptography>=44.0
+
+# Google Calendar
+google-api-python-client>=2.155
+google-auth>=2.37
+google-auth-oauthlib>=1.2
+
+# Планировщик (напоминания, синхронизация)
+APScheduler>=3.11
+
+# Тесты
+pytest>=8.3
+pytest-asyncio>=0.25
