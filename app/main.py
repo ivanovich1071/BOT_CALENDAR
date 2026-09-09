@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from admin.routes import (
     audit,
     bookings,
+    calendars,
     clients,
     dashboard,
     employees,
@@ -13,7 +14,7 @@ from admin.routes import (
     services,
     settings_page,
 )
-from app.api.routes import auth
+from app.api.routes import auth, google_oauth
 from app.config.settings import get_settings
 
 settings = get_settings()
@@ -25,9 +26,11 @@ app = FastAPI(
 )
 
 app.include_router(auth.router)
+app.include_router(google_oauth.router)
 app.include_router(dashboard.router)
 app.include_router(bookings.router)
 app.include_router(schedule.router)
+app.include_router(calendars.router)
 app.include_router(employees.router)
 app.include_router(services.router)
 app.include_router(clients.router)

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Google Календари</h1>
+<p class="text-sm text-slate-500 mb-6">
+  Каждый сотрудник подключает свой календарь через Google (OAuth). Свободные слоты
+  учитывают занятость из Google, а подтверждённые записи создают в нём события.
+</p>
+
+{% if not google_ready %}
+<div class="mb-6 px-4 py-3 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 text-sm">
+  Google OAuth не настроен: заполните GOOGLE_CLIENT_ID и GOOGLE_CLIENT_SECRET в .env
+  по инструкции docs/GOOGLE_SETUP.md, затем перезапустите приложение.
+</div>
+{% endif %}
+
+<div class="space-y-4">
+{% for item in items %}
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="font-semibold">{{ item.employee.name }} {% if not item.employee.is_active %}<span class="text-xs text-slate-400">(отключён)</span>{% endif %}</div>
+        {% if item.accounts %}
+          {% for a in item.accounts %}
+          <div class="text-sm text-slate-600 mt-1">
+            📧 {{ a.account.google_email }}
+            {% if a.calendars %}
+              · календари:
+              {% for c in a.calendars %}<span class="text-xs bg-slate-100 rounded px-1.5 py-0.5 mr-1">{{ c.calendar_name }}</span>{% endfor %}
+            {% else %} · календари не загружены{% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-sm text-slate-400 mt-1">Календарь не подключён</div>
+        {% endif %}
+      </div>
+      {% if can_manage %}
+      <div class="space-x-2">
+        {% if not item.accounts and google_ready %}
+        <a href="/admin/calendars/connect/{{ item.employee.id }}"
+           class="inline-block bg-sky-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-sky-500">Подключить Google</a>
+        {% endif %}
+        {% for a in item.accounts %}
+        <form method="post" action="/admin/calendars/{{ a.account.id }}/refresh" class="inline">
+          <button class="border border-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-slate-50">Обновить календари</button>
+        </form>
+        <form method="post" action="/admin/calendars/{{ a.account.id }}/disconnect" class="inline"
+              hx-confirm="Отключить {{ a.account.google_email }}? События Google останутся, связь будет удалена.">
+          <button class="text-rose-600 text-sm hover:underline">Отключить</button>
+        </form>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="bg-white rounded-xl shadow p-6 text-slate-500">Сначала добавьте сотрудников.</div>
+{% endfor %}
+</div>
+{% endblock %}
