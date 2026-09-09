@@ -1,10 +1,17 @@
 """OAuth 2.0 для Google Calendar (уровень интеграции, без БД)."""
 
+import os
 from datetime import timezone
 
 from google_auth_oauthlib.flow import Flow
 
 from app.config.settings import get_settings
+
+# Google выдаёт больше разрешений, чем мы просим: к userinfo.email он сам
+# добавляет openid и короткий email. oauthlib считает расхождение ошибкой и
+# бросает Warning прямо из fetch_token, до того как мы получим токены.
+# Дописать openid в SCOPES не спасает — короткий email всё равно не совпадёт.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 # calendar.events — создание/чтение/правка событий календарей;
 # calendar.readonly — freebusy-проверки; userinfo.email — определить email аккаунта
