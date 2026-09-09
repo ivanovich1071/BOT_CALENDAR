@@ -18,11 +18,16 @@ from admin.routes import (
     settings_page,
 )
 from app.api.routes import auth, google_oauth
+from app.config.network import prefer_ipv4
 from app.config.settings import get_settings
 from app.scheduler import shutdown_scheduler, start_scheduler
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# До первого обращения к Google: иначе httplib2 упрётся в неотвечающий IPv6
+if settings.prefer_ipv4:
+    prefer_ipv4()
 
 
 @asynccontextmanager

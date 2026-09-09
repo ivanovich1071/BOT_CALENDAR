@@ -38,6 +38,10 @@ class Settings(BaseSettings):
 
     timezone: str = "Europe/Moscow"
 
+    # Пробовать IPv4 раньше IPv6 в исходящих соединениях (см. app/config/network.py).
+    # Выключайте только на хостах, где IPv6 заведомо рабочий и предпочтителен.
+    prefer_ipv4: bool = True
+
     @property
     def is_prod(self) -> bool:
         return self.app_env == "production"
