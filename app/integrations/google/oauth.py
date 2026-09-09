@@ -1,5 +1,7 @@
 """OAuth 2.0 для Google Calendar (уровень интеграции, без БД)."""
 
+from datetime import timezone
+
 from google_auth_oauthlib.flow import Flow
 
 from app.config.settings import get_settings
@@ -46,14 +48,19 @@ def authorization_url(state: str) -> str:
 
 
 def exchange_code(code: str) -> dict:
-    """Меняет authorization_code на токены. Возвращает access/refresh/expiry."""
+    """Меняет authorization_code на токены. Возвращает access/refresh/expiry (UTC)."""
     flow = make_flow()
     flow.fetch_token(code=code)
     creds = flow.credentials
+    expiry = creds.expiry
+    if expiry is not None and expiry.tzinfo is None:
+        # google-auth отдаёт expiry наивным, но это UTC — помечаем явно,
+        # иначе в timestamptz уедет часовой пояс сервера
+        expiry = expiry.replace(tzinfo=timezone.utc)
     return {
         "access_token": creds.token,
         "refresh_token": creds.refresh_token,
-        "expires_at": creds.expiry,  # tz-aware datetime
+        "expires_at": expiry,
     }
 
 

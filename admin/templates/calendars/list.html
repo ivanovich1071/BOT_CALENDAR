@@ -51,6 +51,29 @@
       </div>
       {% endif %}
     </div>
+
+    {% if item.all_calendars %}
+    <div class="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3 flex-wrap">
+      <span class="text-sm text-slate-600">Рабочий календарь:</span>
+      {% if can_manage %}
+      <form method="post" action="/admin/calendars/employee/{{ item.employee.id }}/default"
+            class="flex items-center gap-2">
+        <select name="calendar_id" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+          <option value="0">— автоматически (основной) —</option>
+          {% for c in item.all_calendars %}
+          <option value="{{ c.id }}" {{ 'selected' if item.employee.default_calendar_id == c.id }}>
+            {{ c.calendar_name }}{% if c.is_primary %} · основной{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <button class="border border-slate-300 px-3 py-1.5 rounded-lg text-sm hover:bg-slate-50">Сохранить</button>
+      </form>
+      {% endif %}
+      {% if item.active_calendar %}
+      <span class="text-xs text-slate-500">записи попадают в «{{ item.active_calendar.calendar_name }}»</span>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 {% else %}
   <div class="bg-white rounded-xl shadow p-6 text-slate-500">Сначала добавьте сотрудников.</div>

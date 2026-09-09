@@ -14,9 +14,8 @@ from app.models.client import Client
 from app.models.employee import Employee
 from app.models.enums import BOOKING_STATUS_LABELS_RU, BOOKING_STATUSES, SOURCE_ADMIN
 from app.models.service import Service
-from app.services import booking_service
-from app.services.audit_service import log_action
-from app.services.schedule_service import free_slots, local_tz
+from app.services import booking_flow, booking_service
+from app.services.schedule_service import local_tz
 
 router = APIRouter(prefix="/admin/bookings")
 
@@ -26,6 +25,13 @@ def _parse_date(v: str):
         return datetime.strptime(v, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return None
+
+
+def _created_message(google) -> str:
+    """Google молчит (None) — так и задумано: система работает и без календаря."""
+    if google is False:
+        return "Запись создана, но событие в Google Calendar не создано — проверьте журнал"
+    return "Запись создана"
 
 
 @router.get("")
@@ -121,28 +127,23 @@ async def slots(
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """HTMX-фрагмент со свободными слотами."""
+    """HTMX-фрагмент со свободными слотами (расписание − брони − занятость Google)."""
     if not user.has_permission("view_calendar"):
         return render(request, "bookings/_slots.html", {"slots": [], "error": "Недостаточно прав"})
-    service = db.get(Service, service_id)
     day = _parse_date(date)
-    if service is None or day is None or employee_id == 0:
+    if day is None or employee_id == 0 or service_id == 0:
         return render(
             request,
             "bookings/_slots.html",
             {"slots": [], "error": "Выберите сотрудника, услугу и дату"},
         )
-    # Занятость Google Calendar подставляется на этапе интеграции (CalendarService.freebusy)
-    busy: list = []
     try:
-        slot_list = free_slots(db, employee_id, service.duration_minutes, day, busy, exclude_booking_id)
+        slot_list = booking_flow.available_slots(
+            db, employee_id, service_id, day, exclude_booking_id or None
+        )
     except Exception:  # noqa: BLE001
         return render(request, "bookings/_slots.html", {"slots": [], "error": "Ошибка расчёта слотов"})
-    return render(
-        request,
-        "bookings/_slots.html",
-        {"slots": slot_list, "error": "Свободных слотов нет" if not slot_list else None},
-    )
+    return render(request, "bookings/_slots.html", {"slots": slot_list})
 
 
 @router.post("/create")
@@ -176,7 +177,7 @@ async def create_booking_post(
         start_local = datetime.combine(day, datetime.min.time(), tzinfo=local_tz()).replace(
             hour=int(hh), minute=int(mm)
         )
-        booking = booking_service.create_booking(
+        _booking, google = booking_flow.create(
             db,
             client_id=client_id,
             employee_id=employee_id,
@@ -184,6 +185,8 @@ async def create_booking_post(
             start_at=start_local,
             source=SOURCE_ADMIN,
             notes=notes,
+            actor=user.login,
+            user_id=user.id,
         )
     except booking_service.SlotTakenError:
         return redirect(back, err="Слот уже занят")
@@ -192,12 +195,7 @@ async def create_booking_post(
     except ValueError:
         return redirect(back, err="Неверное время")
 
-    log_action(
-        db, actor=user.login, action="booking.create", entity_type="booking",
-        entity_id=booking.id, user_id=user.id,
-        details={"start": booking.start_at.isoformat(), "source": SOURCE_ADMIN},
-    )
-    return redirect(f"/admin/bookings?date={day.isoformat()}", ok="Запись создана")
+    return redirect(f"/admin/bookings?date={day.isoformat()}", ok=_created_message(google))
 
 
 @router.get("/{booking_id}/reschedule")
@@ -239,16 +237,22 @@ async def reschedule_post(
         start_local = datetime.combine(day, datetime.min.time(), tzinfo=local_tz()).replace(
             hour=int(hh), minute=int(mm)
         )
-        booking_service.reschedule_booking(db, booking_id, new_start=start_local)
+        _booking, google = booking_flow.reschedule(
+            db, booking_id, new_start=start_local, actor=user.login, user_id=user.id
+        )
     except booking_service.SlotTakenError:
         return redirect(f"/admin/bookings/{booking_id}/reschedule", err="Слот уже занят")
     except booking_service.NotFoundError:
         return redirect("/admin/bookings", err="Активная запись не найдена")
-    log_action(
-        db, actor=user.login, action="booking.reschedule", entity_type="booking",
-        entity_id=booking_id, user_id=user.id,
+    except ValueError:
+        return redirect(f"/admin/bookings/{booking_id}/reschedule", err="Неверное время")
+
+    message = (
+        "Запись перенесена, но событие в Google Calendar осталось на прежнем месте"
+        if google is False
+        else "Запись перенесена"
     )
-    return redirect(f"/admin/bookings?date={day.isoformat()}", ok="Запись перенесена")
+    return redirect(f"/admin/bookings?date={day.isoformat()}", ok=message)
 
 
 @router.post("/{booking_id}/status")
@@ -263,11 +267,15 @@ async def change_status(
     if status not in BOOKING_STATUSES:
         return redirect("/admin/bookings", err="Неверный статус")
     try:
-        booking_service.set_booking_status(db, booking_id, status)
+        _booking, google = booking_flow.set_status(
+            db, booking_id, status, actor=user.login, user_id=user.id
+        )
     except booking_service.NotFoundError:
         return redirect("/admin/bookings", err="Запись не найдена")
-    log_action(
-        db, actor=user.login, action=f"booking.{status}", entity_type="booking",
-        entity_id=booking_id, user_id=user.id,
+
+    message = (
+        "Статус обновлён, но событие в Google Calendar не удалено"
+        if google is False
+        else "Статус обновлён"
     )
-    return redirect("/admin/bookings", ok="Статус обновлён")
+    return redirect("/admin/bookings", ok=message)

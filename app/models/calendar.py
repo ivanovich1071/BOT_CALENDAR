@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -26,6 +26,9 @@ class Calendar(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Метка инкрементальной синхронизации — своя у каждого календаря:
+    # syncToken одного календаря непригоден для другого (Google ответит 410).
+    sync_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     google_account = relationship("GoogleAccount", back_populates="calendars")
     bookings = relationship("Booking", back_populates="calendar")

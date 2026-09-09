@@ -1,5 +1,8 @@
 """Точка входа: FastAPI (API + админка). Telegram-бот стартует отдельным процессом."""
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -16,13 +19,30 @@ from admin.routes import (
 )
 from app.api.routes import auth, google_oauth
 from app.config.settings import get_settings
+from app.scheduler import shutdown_scheduler, start_scheduler
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Фоновая синхронизация Google живёт столько же, сколько процесс API."""
+    try:
+        start_scheduler()
+    except Exception:  # noqa: BLE001 — без планировщика приложение всё равно работает
+        logger.exception("Не удалось запустить планировщик")
+    try:
+        yield
+    finally:
+        shutdown_scheduler()
+
 
 app = FastAPI(
     title="Booking Platform API",
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/api/docs" if not settings.is_prod else None,
+    lifespan=lifespan,
 )
 
 app.include_router(auth.router)
@@ -63,6 +83,8 @@ def _redis_host_port() -> tuple[str, int]:
 
 @app.get("/health")
 async def health() -> JSONResponse:
+    import app.scheduler as scheduler_module
+
     db_host, db_port = _db_host_port()
     redis_host, redis_port = _redis_host_port()
     return JSONResponse(
@@ -71,5 +93,7 @@ async def health() -> JSONResponse:
             "env": settings.app_env,
             "postgres": _service_available(db_host, db_port),
             "redis": _service_available(redis_host, redis_port),
+            "scheduler": scheduler_module._scheduler is not None,
+            "google_configured": bool(settings.google_client_id and settings.google_client_secret),
         }
     )

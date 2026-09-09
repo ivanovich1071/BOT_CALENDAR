@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -41,7 +41,16 @@ async def calendars_page(
             }
             for a in e.google_accounts
         ]
-        items.append({"employee": e, "accounts": accounts})
+        active = calendar_service.default_calendar(db, e.id)
+        items.append(
+            {
+                "employee": e,
+                "accounts": accounts,
+                # Плоский список для выбора рабочего календаря
+                "all_calendars": calendar_service.employee_calendars(db, e.id),
+                "active_calendar": active,
+            }
+        )
     return render(
         request,
         "calendars/list.html",
@@ -75,6 +84,29 @@ async def connect_google(
     state = create_access_token("oauth", extra={"emp": employee_id}, minutes=10)
     url = google_oauth.authorization_url(state)
     return redirect(url)
+
+
+@router.post("/employee/{employee_id}/default")
+async def set_default_calendar(
+    employee_id: int,
+    calendar_id: int = Form(0),
+    user=Depends(require_permission("manage_employees")),
+    db: Session = Depends(get_db),
+):
+    """Какой календарь считать рабочим: туда пишутся события записей."""
+    employee = db.get(Employee, employee_id)
+    if employee is None:
+        return redirect("/admin/calendars", err="Сотрудник не найден")
+    allowed = {c.id for c in calendar_service.employee_calendars(db, employee_id)}
+    if calendar_id and calendar_id not in allowed:
+        return redirect("/admin/calendars", err="Этот календарь не принадлежит сотруднику")
+    employee.default_calendar_id = calendar_id or None
+    db.commit()
+    log_action(
+        db, actor=user.login, action="google.set_default_calendar", entity_type="employee",
+        entity_id=employee_id, details={"calendar_id": calendar_id or None}, user_id=user.id,
+    )
+    return redirect("/admin/calendars", ok=f"Рабочий календарь сотрудника {employee.name} обновлён")
 
 
 @router.post("/{account_id}/disconnect")

@@ -19,6 +19,10 @@ class Employee(Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     specialization: Mapped[str | None] = mapped_column(String(120), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Явно выбранный рабочий календарь. Пусто — берётся primary подключённого аккаунта.
+    default_calendar_id: Mapped[int | None] = mapped_column(
+        ForeignKey("calendars.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

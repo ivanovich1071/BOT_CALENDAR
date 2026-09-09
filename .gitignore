@@ -37,3 +37,6 @@ Thumbs.db
 # ==== Google OAuth артефакты ====
 token*.json
 client_secret*.json
+
+# ==== Claude Code ====
+.claude/settings.local.json
