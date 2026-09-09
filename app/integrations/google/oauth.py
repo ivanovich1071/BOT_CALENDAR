@@ -32,7 +32,14 @@ def _client_config() -> dict:
 def make_flow() -> Flow:
     s = get_settings()
     return Flow.from_client_config(
-        _client_config(), scopes=SCOPES, redirect_uri=s.google_redirect_uri
+        _client_config(),
+        scopes=SCOPES,
+        redirect_uri=s.google_redirect_uri,
+        # PKCE выключен намеренно: ссылку авторизации и обмен кода выполняют
+        # разные HTTP-запросы, каждый со своим Flow, и code_verifier между ними
+        # не переживает — Google ответил бы invalid_grant. Клиент
+        # конфиденциальный (есть client_secret), для него PKCE не обязателен.
+        autogenerate_code_verifier=False,
     )
 
 
