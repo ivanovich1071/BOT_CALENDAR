@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Записи</h1>
+  {% if user.has_permission('create_booking') %}
+  <a href="/admin/bookings/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Новая запись</a>
+  {% endif %}
+</div>
+
+<form method="get" action="/admin/bookings" class="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap gap-3 items-end text-sm">
+  <label><span class="text-slate-600">Дата</span>
+    <input type="date" name="date" value="{{ day }}" class="block mt-1 border border-slate-300 rounded-lg px-3 py-1.5"></label>
+  <label><span class="text-slate-600">Сотрудник</span>
+    <select name="employee_id" class="block mt-1 border border-slate-300 rounded-lg px-3 py-1.5">
+      <option value="0">Все</option>
+      {% for e in employees %}<option value="{{ e.id }}" {{ 'selected' if e.id == f_employee }}>{{ e.name }}</option>{% endfor %}
+    </select></label>
+  <label><span class="text-slate-600">Статус</span>
+    <select name="status" class="block mt-1 border border-slate-300 rounded-lg px-3 py-1.5">
+      <option value="">Все</option>
+      {% for st, label in status_labels.items() %}<option value="{{ st }}" {{ 'selected' if st == f_status }}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <button class="bg-slate-900 text-white rounded-lg px-4 py-1.5 hover:bg-slate-700">Показать</button>
+</form>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Время</th><th class="px-4 py-3">Клиент</th><th class="px-4 py-3">Сотрудник</th>
+      <th class="px-4 py-3">Услуга</th><th class="px-4 py-3">Статус</th><th class="px-4 py-3">Источник</th><th class="px-4 py-3">Действия</th>
+    </tr></thead>
+    <tbody>
+    {% set badges = {"booked": "bg-emerald-100 text-emerald-700", "cancelled": "bg-rose-100 text-rose-700", "completed": "bg-sky-100 text-sky-700", "no_show": "bg-amber-100 text-amber-700"} %}
+    {% for b in items %}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-3 font-medium whitespace-nowrap">{{ b.start_at|localtime }}–{{ b.end_at|localtime }}</td>
+        <td class="px-4 py-3">{{ b.client.name or b.client.telegram_username or ("#" ~ b.client.id) }}</td>
+        <td class="px-4 py-3">{{ b.employee.name }}</td>
+        <td class="px-4 py-3">{{ b.service.name }}</td>
+        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs {{ badges.get(b.status, '') }}">{{ status_labels.get(b.status, b.status) }}</span></td>
+        <td class="px-4 py-3 text-slate-500">{{ b.source }}</td>
+        <td class="px-4 py-3 space-x-2 whitespace-nowrap">
+          {% if b.status == 'booked' %}
+            {% if user.has_permission('edit_booking') %}
+            <a href="/admin/bookings/{{ b.id }}/reschedule" class="text-sky-600 hover:underline">Перенести</a>
+            <form method="post" action="/admin/bookings/{{ b.id }}/status" class="inline">
+              <input type="hidden" name="status" value="completed">
+              <button class="text-emerald-600 hover:underline">Завершить</button>
+            </form>
+            <form method="post" action="/admin/bookings/{{ b.id }}/status" class="inline">
+              <input type="hidden" name="status" value="no_show">
+              <button class="text-amber-600 hover:underline">Неявка</button>
+            </form>
+            {% endif %}
+            {% if user.has_permission('delete_booking') %}
+            <form method="post" action="/admin/bookings/{{ b.id }}/status" class="inline"
+                  hx-confirm="Отменить запись #{{ b.id }}?">
+              <input type="hidden" name="status" value="cancelled">
+              <button class="text-rose-600 hover:underline">Отменить</button>
+            </form>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="7">Записей на выбранную дату нет.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

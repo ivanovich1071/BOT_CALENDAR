@@ -1,0 +1,11 @@
+{% if error %}
+  <p class="text-rose-600">{{ error }}</p>
+{% elif slots %}
+  <label class="block"><span class="text-slate-600">Свободное время *</span>
+    <select name="slot" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+      {% for s in slots %}<option value="{{ s.strftime('%H:%M') }}">{{ s.strftime("%H:%M") }}</option>{% endfor %}
+    </select></label>
+  <p class="text-xs text-slate-500 mt-1">Свободных слотов: {{ slots|length }}</p>
+{% else %}
+  <p class="text-slate-500">Свободных слотов нет на выбранную дату.</p>
+{% endif %}

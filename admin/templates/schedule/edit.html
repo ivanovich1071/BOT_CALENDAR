@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Расписание</h1>
+<p class="text-sm text-slate-500 mb-4">Недельный шаблон рабочих часов. Бронирование доступно только в эти интервалы (минус занятое в Google Calendar).</p>
+
+{% if not employees %}
+<div class="bg-white rounded-xl shadow p-6 text-slate-500">Сначала добавьте сотрудников.</div>
+{% else %}
+<div class="flex gap-2 flex-wrap mb-4">
+  {% for e in employees %}
+  <a href="/admin/schedule?employee_id={{ e.id }}"
+     class="px-3 py-1.5 rounded-lg text-sm border {{ 'bg-slate-900 text-white border-slate-900' if chosen and e.id == chosen.id else 'bg-white border-slate-300 hover:bg-slate-50' }}">{{ e.name }}</a>
+  {% endfor %}
+</div>
+
+{% if chosen %}
+<form method="post" action="/admin/schedule/save" class="bg-white rounded-xl shadow p-6">
+  <input type="hidden" name="employee_id" value="{{ chosen.id }}">
+  <h2 class="font-semibold mb-4">{{ chosen.name }} — недельное расписание</h2>
+  <div class="space-y-2">
+    {% for wd, day_name in days %}
+      {% set row = rows.get(wd) %}
+      <div class="grid grid-cols-12 gap-2 items-center border rounded-lg px-3 py-2 {{ 'bg-slate-50' if row and row.is_active else '' }}">
+        <label class="col-span-3 md:col-span-2 flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" name="active_{{ wd }}" {{ 'checked' if row and row.is_active }} class="rounded">
+          {{ day_name }}
+        </label>
+        <div class="col-span-9 md:col-span-10 grid grid-cols-4 gap-2 text-sm">
+          <label class="text-xs text-slate-500">Начало
+            <input name="start_{{ wd }}" type="time" value="{{ row.start_time.strftime('%H:%M') if row and row.start_time else '09:00' }}" class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1"></label>
+          <label class="text-xs text-slate-500">Конец
+            <input name="end_{{ wd }}" type="time" value="{{ row.end_time.strftime('%H:%M') if row and row.end_time else '18:00' }}" class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1"></label>
+          <label class="text-xs text-slate-500">Перерыв с
+            <input name="break_start_{{ wd }}" type="time" value="{{ row.break_start.strftime('%H:%M') if row and row.break_start else '' }}" class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1"></label>
+          <label class="text-xs text-slate-500">Перерыв до
+            <input name="break_end_{{ wd }}" type="time" value="{{ row.break_end.strftime('%H:%M') if row and row.break_end else '' }}" class="mt-0.5 w-full border border-slate-300 rounded px-2 py-1"></label>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% if can_manage %}
+  <button class="mt-4 bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить расписание</button>
+  {% endif %}
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

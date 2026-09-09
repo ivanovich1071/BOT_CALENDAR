@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Журнал аудита</h1>
+
+<form method="get" action="/admin/audit" class="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap gap-3 items-end text-sm">
+  <label><span class="text-slate-600">Кто</span>
+    <input name="actor" value="{{ f_actor }}" placeholder="admin, IVANOV, TG:123…" class="block mt-1 border border-slate-300 rounded-lg px-3 py-1.5"></label>
+  <label><span class="text-slate-600">Действие</span>
+    <input name="action" value="{{ f_action }}" placeholder="booking.create…" class="block mt-1 border border-slate-300 rounded-lg px-3 py-1.5"></label>
+  <button class="bg-slate-900 text-white rounded-lg px-4 py-1.5 hover:bg-slate-700">Фильтр</button>
+</form>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Время</th><th class="px-4 py-3">Кто</th><th class="px-4 py-3">Действие</th><th class="px-4 py-3">Объект</th><th class="px-4 py-3">Детали</th>
+    </tr></thead>
+    <tbody>
+    {% for a in items %}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-2 whitespace-nowrap">{{ a.created_at|localdt }}</td>
+        <td class="px-4 py-2 font-medium">{{ a.actor }}</td>
+        <td class="px-4 py-2">{{ a.action }}</td>
+        <td class="px-4 py-2 text-slate-500">{{ a.entity_type or "" }}{{ ("#" ~ a.entity_id) if a.entity_id else "" }}</td>
+        <td class="px-4 py-2 text-xs text-slate-500 max-w-sm truncate">{{ a.details|tojson if a.details else "" }}</td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="5">Пока пусто.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title or "Админка" }} — Booking Platform</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body class="bg-slate-100 text-slate-800">
+{% if user %}
+<div class="flex min-h-screen">
+  <aside class="w-60 bg-slate-900 text-slate-200 flex flex-col shrink-0">
+    <div class="px-5 py-5 text-lg font-bold text-white border-b border-slate-700">📅 Booking Platform</div>
+    <nav class="flex-1 px-3 py-4 space-y-1 text-sm">
+      {% set nav_items = [
+        ("dashboard", "/admin/", "Панель"),
+        ("bookings", "/admin/bookings", "Записи"),
+        ("schedule", "/admin/schedule", "Расписание"),
+        ("employees", "/admin/employees", "Сотрудники"),
+        ("services", "/admin/services", "Услуги"),
+        ("clients", "/admin/clients", "Клиенты"),
+        ("settings", "/admin/settings", "Настройки"),
+        ("audit", "/admin/audit", "Аудит"),
+      ] %}
+      {% for key, href, label in nav_items %}
+      <a href="{{ href }}" class="block px-3 py-2 rounded-md transition
+         {{ 'bg-slate-700 text-white font-medium' if nav == key else 'hover:bg-slate-800' }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="px-5 py-4 border-t border-slate-700 text-xs">
+      <div class="mb-2 font-semibold">{{ user.login }} <span class="text-slate-400">· {{ user.role }}</span></div>
+      <form method="post" action="/logout"><button class="text-slate-300 hover:text-white underline">Выйти</button></form>
+    </div>
+  </aside>
+  <main class="flex-1 p-8 max-w-6xl">
+    {% if flash_ok %}<div class="mb-4 px-4 py-3 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">{{ flash_ok }}</div>{% endif %}
+    {% if flash_err %}<div class="mb-4 px-4 py-3 rounded-lg bg-rose-100 text-rose-800 border border-rose-300">{{ flash_err }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<main class="min-h-screen">{% block auth_content %}{% endblock %}</main>
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Сотрудники</h1>
+  {% if user.has_permission('manage_employees') %}
+  <a href="/admin/employees/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Добавить</a>
+  {% endif %}
+</div>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Имя</th><th class="px-4 py-3">Логин</th><th class="px-4 py-3">Телефон</th>
+      <th class="px-4 py-3">Специализация</th><th class="px-4 py-3">Google Calendar</th><th class="px-4 py-3">Статус</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-3 font-medium">{{ item.employee.name }}</td>
+        <td class="px-4 py-3">{{ item.employee.user.login if item.employee.user else "—" }}</td>
+        <td class="px-4 py-3">{{ item.employee.phone or "—" }}</td>
+        <td class="px-4 py-3">{{ item.employee.specialization or "—" }}</td>
+        <td class="px-4 py-3">{{ item.google_status }}</td>
+        <td class="px-4 py-3">
+          {% if item.employee.is_active %}<span class="text-emerald-600">● активен</span>{% else %}<span class="text-slate-400">● отключён</span>{% endif %}
+        </td>
+        <td class="px-4 py-3 text-right">
+          {% if user.has_permission('manage_employees') %}
+          <a href="/admin/employees/{{ item.employee.id }}/edit" class="text-sky-600 hover:underline">Изменить</a>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="7">Сотрудников пока нет. Добавьте первого.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

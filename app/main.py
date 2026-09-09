@@ -1,10 +1,19 @@
 """Точка входа: FastAPI (API + админка). Telegram-бот стартует отдельным процессом."""
 
-import socket
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from admin.routes import (
+    audit,
+    bookings,
+    clients,
+    dashboard,
+    employees,
+    schedule,
+    services,
+    settings_page,
+)
+from app.api.routes import auth
 from app.config.settings import get_settings
 
 settings = get_settings()
@@ -15,8 +24,20 @@ app = FastAPI(
     docs_url="/api/docs" if not settings.is_prod else None,
 )
 
+app.include_router(auth.router)
+app.include_router(dashboard.router)
+app.include_router(bookings.router)
+app.include_router(schedule.router)
+app.include_router(employees.router)
+app.include_router(services.router)
+app.include_router(clients.router)
+app.include_router(settings_page.router)
+app.include_router(audit.router)
+
 
 def _service_available(host: str, port: int) -> bool:
+    import socket
+
     try:
         with socket.create_connection((host, port), timeout=1.5):
             return True

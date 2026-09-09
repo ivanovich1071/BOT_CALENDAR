@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Новая запись</h1>
+
+<form method="post" action="/admin/bookings/create" class="bg-white rounded-xl shadow p-6 space-y-5 max-w-2xl">
+  <div class="grid grid-cols-2 gap-4">
+    <label class="text-sm"><span class="text-slate-600">Сотрудник *</span>
+      <select name="employee_id" required
+              hx-get="/admin/bookings/slots" hx-target="#slots" hx-trigger="change"
+              hx-include="[name='service_id'],[name='date']"
+              class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+        {% for e in employees %}<option value="{{ e.id }}" {{ 'selected' if e.id == f_employee }}>{{ e.name }}</option>{% endfor %}
+      </select></label>
+    <label class="text-sm"><span class="text-slate-600">Услуга *</span>
+      <select name="service_id" required
+              hx-get="/admin/bookings/slots" hx-target="#slots" hx-trigger="change"
+              hx-include="[name='employee_id'],[name='date']"
+              class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+        {% for s in services %}<option value="{{ s.id }}" {{ 'selected' if s.id == f_service }}>{{ s.name }} ({{ s.duration_minutes }} мин)</option>{% endfor %}
+      </select></label>
+  </div>
+
+  <label class="text-sm block w-48"><span class="text-slate-600">Дата *</span>
+    <input type="date" name="date" required
+           hx-get="/admin/bookings/slots" hx-target="#slots" hx-trigger="change"
+           hx-include="[name='employee_id'],[name='service_id']"
+           class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+
+  <div id="slots" class="text-sm">
+    <p class="text-slate-500">Выберите сотрудника, услугу и дату — появятся свободные слоты.</p>
+  </div>
+
+  <fieldset class="border border-slate-200 rounded-lg p-4 space-y-3">
+    <legend class="text-sm font-medium px-1">Клиент</legend>
+    <label class="text-sm block"><span class="text-slate-600">Существующий клиент</span>
+      <select name="client_id" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+        <option value="0">— Новый клиент —</option>
+        {% for c in clients %}
+        <option value="{{ c.id }}">{{ c.name or "Без имени" }}{% if c.phone %} · {{ c.phone }}{% endif %}</option>
+        {% endfor %}
+      </select></label>
+    <div class="grid grid-cols-2 gap-4">
+      <label class="text-sm"><span class="text-slate-600">Имя нового клиента</span>
+        <input name="client_name" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+      <label class="text-sm"><span class="text-slate-600">Телефон</span>
+        <input name="client_phone" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    </div>
+  </fieldset>
+
+  <label class="text-sm block"><span class="text-slate-600">Заметка</span>
+    <input name="notes" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+
+  <div class="flex gap-3">
+    <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Создать запись</button>
+    <a href="/admin/bookings" class="px-5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Отмена</a>
+  </div>
+</form>
+{% endblock %}

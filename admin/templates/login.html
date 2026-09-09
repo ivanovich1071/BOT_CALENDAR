@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block auth_content %}
+<div class="min-h-screen flex items-center justify-center bg-slate-900">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <h1 class="text-xl font-bold mb-1">📅 Booking Platform</h1>
+    <p class="text-sm text-slate-500 mb-6">Вход в панель управления</p>
+    {% if error %}<div class="mb-4 px-3 py-2 rounded-lg bg-rose-100 text-rose-700 text-sm">{{ error }}</div>{% endif %}
+    <form method="post" action="/login" class="space-y-4">
+      <input name="login" placeholder="Логин" required autofocus
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400">
+      <input name="password" type="password" placeholder="Пароль" required
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400">
+      <button class="w-full bg-slate-900 text-white rounded-lg py-2 hover:bg-slate-700 transition">Войти</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

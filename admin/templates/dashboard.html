@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Панель управления</h1>
+
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+  <div class="bg-white rounded-xl shadow p-5"><div class="text-3xl font-bold">{{ stats.today }}</div><div class="text-sm text-slate-500">Записей сегодня</div></div>
+  <div class="bg-white rounded-xl shadow p-5"><div class="text-3xl font-bold">{{ stats.week }}</div><div class="text-sm text-slate-500">На неделю</div></div>
+  <div class="bg-white rounded-xl shadow p-5"><div class="text-3xl font-bold">{{ stats.clients }}</div><div class="text-sm text-slate-500">Клиентов</div></div>
+  <div class="bg-white rounded-xl shadow p-5"><div class="text-3xl font-bold">{{ stats.employees }}</div><div class="text-sm text-slate-500">Сотрудников</div></div>
+  <div class="bg-white rounded-xl shadow p-5"><div class="text-3xl font-bold">{{ stats.services }}</div><div class="text-sm text-slate-500">Услуг</div></div>
+</div>
+
+<div class="bg-white rounded-xl shadow p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="font-semibold">Записи на сегодня</h2>
+    <a href="/admin/bookings/new" class="text-sm bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700">+ Новая запись</a>
+  </div>
+  {% if not today_bookings %}
+    <p class="text-slate-500 text-sm">На сегодня записей нет.</p>
+  {% else %}
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b">
+      <th class="py-2">Время</th><th>Клиент</th><th>Сотрудник</th><th>Услуга</th><th>Статус</th>
+    </tr></thead>
+    <tbody>
+    {% set badges = {"booked": "bg-emerald-100 text-emerald-700", "cancelled": "bg-rose-100 text-rose-700", "completed": "bg-sky-100 text-sky-700", "no_show": "bg-amber-100 text-amber-700"} %}
+    {% for b in today_bookings %}
+      <tr class="border-b last:border-0">
+        <td class="py-2 font-medium">{{ b.start_at|localtime }}–{{ b.end_at|localtime }}</td>
+        <td>{{ b.client.name or b.client.telegram_username or ("#" ~ b.client.id) }}</td>
+        <td>{{ b.employee.name }}</td>
+        <td>{{ b.service.name }}</td>
+        <td><span class="px-2 py-0.5 rounded-full text-xs {{ badges.get(b.status, '') }}">{{ b.status }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

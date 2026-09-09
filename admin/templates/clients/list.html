@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Клиенты</h1>
+  <form method="get" action="/admin/clients" class="flex gap-2">
+    <input name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, @username"
+           class="border border-slate-300 rounded-lg px-3 py-2 text-sm w-72">
+    <button class="bg-slate-900 text-white rounded-lg px-4 py-2 text-sm hover:bg-slate-700">Найти</button>
+  </form>
+</div>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Клиент</th><th class="px-4 py-3">Telegram</th><th class="px-4 py-3">Телефон</th><th class="px-4 py-3">Заметка</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for c in items %}
+      <tr class="border-b last:border-0 align-top">
+        <td class="px-4 py-3 font-medium">{{ c.name or "Без имени" }}</td>
+        <td class="px-4 py-3">{% if c.telegram_username %}@{{ c.telegram_username }}{% else %}—{% endif %}</td>
+        <td class="px-4 py-3">{{ c.phone or "—" }}</td>
+        <td class="px-4 py-3 text-slate-500 max-w-xs">{{ (c.notes or "")[:80] }}</td>
+        <td class="px-4 py-3 text-right">
+          <details class="inline text-left">
+            <summary class="inline cursor-pointer text-sky-600 hover:underline list-none">Изменить</summary>
+            <form method="post" action="/admin/clients/{{ c.id }}/update" class="mt-2 p-3 border rounded-lg bg-slate-50 space-y-2 w-80">
+              <input name="name" value="{{ c.name or '' }}" placeholder="Имя" class="w-full border rounded px-2 py-1.5">
+              <input name="phone" value="{{ c.phone or '' }}" placeholder="Телефон" class="w-full border rounded px-2 py-1.5">
+              <textarea name="notes" placeholder="Заметка" class="w-full border rounded px-2 py-1.5">{{ c.notes or '' }}</textarea>
+              <button class="w-full bg-slate-900 text-white rounded px-3 py-1.5">Сохранить</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="5">Клиентов пока нет — они появятся после первых записей через бота.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
