@@ -265,5 +265,5 @@ DEPLOY_DOMAIN=DOMAIN
 | `redirect_uri_mismatch` | Адрес в Google Cloud не совпадает с `GOOGLE_REDIRECT_URI` посимвольно |
 | `access_denied` при подключении Google | Gmail сотрудника не добавлен в Test users — [GOOGLE_SETUP.md](GOOGLE_SETUP.md), шаг 4 |
 | Сборка или контейнеры падают по памяти | `free -m` — должен быть swap 2 ГБ, его создаёт `server_bootstrap.sh` |
-| SSH вдруг перестал пускать | Хостинг временно блокирует после частых подключений. Подождите 5–10 минут |
+| `Connection closed by … port 22`, пароль даже не спрашивают | Хостинг временно заблокировал SSH для вашего IP после серии попыток. 15 минут ничего не запускать и повторить один раз — или подключиться через раздачу интернета с телефона: у неё другой IP |
 | Alembic падает с `UnicodeDecodeError` | Только Windows с русской локалью. Обход: `alembic upgrade head --sql`, применить через `docker exec bc_postgres psql` |

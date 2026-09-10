@@ -9,54 +9,89 @@
 # неудачных входов.
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
-if [ -f .env.deploy ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . ./.env.deploy
-  set +a
-fi
+# Понятная причина по тексту ошибки ssh
+explain_ssh_error() {
+  case "$1" in
+    *"Permission denied"*)
+      echo "Сервер отклонил пароль. Проверьте пароль root в панели хостинга и запустите ещё раз."
+      ;;
+    *"kex_exchange_identification"* | *"Connection closed by"* | *"Connection reset"*)
+      echo "Сервер закрыл соединение, не дойдя до пароля: хостинг временно заблокировал SSH"
+      echo "для вашего IP после серии попыток. Подождите 15 минут, ничего не запуская,"
+      echo "и повторите один раз. Или подключитесь через раздачу интернета с телефона —"
+      echo "у неё другой IP."
+      ;;
+    *"timed out"* | *"No route to host"* | *"Connection refused"*)
+      echo "Сервер не отвечает на порту 22. Проверьте в панели хостинга, что сервер включён."
+      ;;
+    *)
+      echo "Не удалось положить ключ. Текст ошибки — выше."
+      ;;
+  esac
+}
 
-HOST="${1:-${DEPLOY_HOST:-}}"
-if [ -z "$HOST" ]; then
-  read -r -p "IP сервера: " HOST
-fi
-KEY="${DEPLOY_KEY:-$HOME/.ssh/bot_calendar_deploy}"
-KEY="${KEY/#\~/$HOME}"
+main() {
+  cd "$(dirname "$0")/.." || exit 1
+  if [ -f .env.deploy ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env.deploy
+    set +a
+  fi
 
-if [ ! -f "$KEY" ]; then
-  echo "==> Ключа нет — создаю $KEY (без пароля)"
-  mkdir -p "$(dirname "$KEY")"
-  ssh-keygen -q -t ed25519 -N "" -C "bot-calendar-deploy" -f "$KEY" || exit 1
-fi
+  local host="${1:-${DEPLOY_HOST:-}}"
+  if [ -z "$host" ]; then
+    read -r -p "IP сервера: " host
+  fi
+  local key="${DEPLOY_KEY:-$HOME/.ssh/bot_calendar_deploy}"
+  key="${key/#\~/$HOME}"
 
-echo "==> Кладу ключ на сервер $HOST"
-echo "    Сейчас спросит пароль root. Символы не отображаются — наберите и нажмите Enter."
-echo
+  if [ ! -f "$key" ]; then
+    echo "==> Ключа нет — создаю $key (без пароля)"
+    mkdir -p "$(dirname "$key")"
+    ssh-keygen -q -t ed25519 -N "" -C "bot-calendar-deploy" -f "$key" || exit 1
+  fi
 
-# Сразу к паролю: иначе ssh сначала перебирает личные ключи и спрашивает их пароли.
-# На сервере ключ дописывается, только если его там ещё нет.
-if ! tr -d '\r' < "$KEY.pub" | ssh \
-    -o StrictHostKeyChecking=accept-new \
-    -o PubkeyAuthentication=no \
-    -o PreferredAuthentications=password,keyboard-interactive \
-    -o ConnectTimeout=20 \
-    "root@$HOST" \
-    'k=$(cat); mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && { grep -qxF "$k" ~/.ssh/authorized_keys || echo "$k" >> ~/.ssh/authorized_keys; } && chmod 600 ~/.ssh/authorized_keys'
-then
+  echo "==> Кладу ключ на сервер $host"
+  echo "    Сейчас спросит пароль root. Символы не отображаются — наберите и нажмите Enter."
   echo
-  echo "Не удалось положить ключ: неверный пароль или сервер недоступен." >&2
-  echo "Проверьте пароль и попробуйте ещё раз — но не больше пары раз подряд." >&2
-  exit 2
-fi
 
-echo
-echo "==> Проверяю вход по ключу без пароля"
-if ssh -i "$KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 \
-    "root@$HOST" "echo ok" >/dev/null 2>&1; then
-  echo "Ключ работает: root@$HOST пускает без пароля."
-  exit 0
-fi
+  # Сразу к паролю: иначе ssh сначала перебирает личные ключи и спрашивает их пароли.
+  # На сервере ключ дописывается, только если его там ещё нет.
+  # Запрос пароля ssh пишет в терминал, а не в stderr, поэтому ошибки можно собрать в файл.
+  local err
+  err=$(mktemp)
+  if ! tr -d '\r' < "$key.pub" | ssh \
+      -o StrictHostKeyChecking=accept-new \
+      -o PubkeyAuthentication=no \
+      -o PreferredAuthentications=password,keyboard-interactive \
+      -o ConnectTimeout=20 \
+      "root@$host" \
+      'k=$(cat); mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && { grep -qxF "$k" ~/.ssh/authorized_keys || echo "$k" >> ~/.ssh/authorized_keys; } && chmod 600 ~/.ssh/authorized_keys' \
+      2>"$err"
+  then
+    echo
+    cat "$err" >&2
+    echo >&2
+    explain_ssh_error "$(cat "$err")" >&2
+    rm -f "$err"
+    exit 2
+  fi
+  rm -f "$err"
 
-echo "Ключ записан, но вход без пароля не проходит — напишите разработчику." >&2
-exit 3
+  echo
+  echo "==> Проверяю вход по ключу без пароля"
+  if ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 \
+      "root@$host" "echo ok" >/dev/null 2>&1; then
+    echo "Ключ работает: root@$host пускает без пароля."
+    exit 0
+  fi
+
+  echo "Ключ записан, но вход без пароля не проходит — напишите разработчику." >&2
+  exit 3
+}
+
+# При подключении через source (для проверки) только объявляем функции
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
