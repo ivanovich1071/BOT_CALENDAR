@@ -109,8 +109,8 @@ Redis-lock на сотрудника плюс проверка пересече�
 |---|---|
 | 1–3. Ключ на сервер, согласие на сертификат, адрес в Google Cloud | Сделано 10.09 |
 | Работа разработчика: сервер, `.env`, сертификат, контейнеры | Сделано 10.09 |
-| 4. Создать администратора | **Сейчас** |
-| 5–6. Наполнить админку, проверить в боте | Дальше |
+| 4. Создать администратора | Сделано 10.09 |
+| 5–6. Наполнить админку, проверить в боте | **Сейчас** |
 
 ### До развёртывания · сделано
 
@@ -132,7 +132,7 @@ bash scripts/add_deploy_key.sh
 Самопроверка — эта команда должна напечатать `ok` **без запроса пароля**:
 
 ```powershell
-ssh -i $env:USERPROFILE\.ssh\bot_calendar_deploy root@138.124.63.48 "echo ok"
+ssh -i ~/.ssh/bot_calendar_deploy root@138.124.63.48 "echo ok"
 ```
 
 Спрашивает пароль — ключ не добавился, повторите шаг 1. Лишних попыток лучше не
@@ -167,10 +167,12 @@ HTTP перенаправляется на HTTPS, бот принимает `/st
 ### После развёртывания
 
 **4. Создать администратора.** Пароль вводите вы, у разработчика его не будет.
-Команда в PowerShell спросит логин, пароль (от 8 символов) и повтор пароля:
+Команда работает и в cmd, и в PowerShell; спросит логин, пароль (от 8 символов)
+и повтор пароля. Если перед этим спросила пароль root — ключ не нашёлся, проверьте
+путь `~/.ssh/bot_calendar_deploy`:
 
 ```powershell
-ssh -t -i $env:USERPROFILE\.ssh\bot_calendar_deploy root@138.124.63.48 "cd /opt/bot-calendar && docker compose -f docker-compose.prod.yml exec api python -m app.cli create-admin"
+ssh -t -i ~/.ssh/bot_calendar_deploy root@138.124.63.48 "cd /opt/bot-calendar && docker compose -f docker-compose.prod.yml exec api python -m app.cli create-admin"
 ```
 
 **5. Наполнить админку** на `https://calendar.138-124-63-48.nip.io/admin`:
