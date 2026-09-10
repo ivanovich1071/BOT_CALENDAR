@@ -11,7 +11,7 @@ from app.db.database import get_db
 from app.models.booking import Booking
 from app.models.client import Client
 from app.models.employee import Employee
-from app.models.enums import BOOKED
+from app.models.enums import BOOKED, BOOKING_STATUS_LABELS_RU
 from app.models.service import Service
 from app.services.schedule_service import local_tz
 
@@ -78,6 +78,7 @@ async def dashboard(
             "nav": "dashboard",
             "stats": stats,
             "today_bookings": today_bookings,
+            "status_labels": BOOKING_STATUS_LABELS_RU,
             "page_title": "Панель управления",
         },
     )

@@ -30,7 +30,7 @@
         <td>{{ b.client.name or b.client.telegram_username or ("#" ~ b.client.id) }}</td>
         <td>{{ b.employee.name }}</td>
         <td>{{ b.service.name }}</td>
-        <td><span class="px-2 py-0.5 rounded-full text-xs {{ badges.get(b.status, '') }}">{{ b.status }}</span></td>
+        <td><span class="px-2 py-0.5 rounded-full text-xs {{ badges.get(b.status, '') }}">{{ status_labels.get(b.status, b.status) }}</span></td>
       </tr>
     {% endfor %}
     </tbody>
