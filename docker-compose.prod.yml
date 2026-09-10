@@ -1,0 +1,82 @@
+# Продакшн: всё в контейнерах, наружу смотрит только nginx на хосте.
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Порты PostgreSQL и Redis не публикуются, API слушает только 127.0.0.1.
+name: bot-calendar
+
+x-app: &app
+  build: .
+  image: bot-calendar:latest
+  env_file: .env
+  environment:
+    APP_ENV: production
+    # Хосты живут здесь, а не в .env: в .env остаются только секреты и ключи
+    DATABASE_URL: postgresql+psycopg://booking:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@postgres:5432/booking
+    REDIS_URL: redis://redis:6379/0
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: booking
+    # Рассчитано на VPS с 1 ГБ RAM: нагрузка — единицы записей в минуту
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    <<: *app
+    # Миграции перед стартом: образ новее базы — схема догоняется сама
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 40s
+
+  bot:
+    <<: *app
+    command: ["python", "-m", "app.bot.main"]
+    # Бот стартует после API: к этому моменту миграции уже применены
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

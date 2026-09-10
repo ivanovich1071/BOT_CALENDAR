@@ -35,3 +35,6 @@ APScheduler>=3.11
 # Тесты
 pytest>=8.3
 pytest-asyncio>=0.25
+
+# Часовые пояса: в slim-образе Linux и на Windows системной базы tz нет
+tzdata>=2024.1
