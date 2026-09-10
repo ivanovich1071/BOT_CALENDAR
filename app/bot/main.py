@@ -15,7 +15,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.bot.handlers import appointments, booking, start
+from app.bot.handlers import ai, appointments, booking, start
 from app.config.network import prefer_ipv4
 from app.config.settings import get_settings
 
@@ -73,6 +73,8 @@ def build_dispatcher(storage=None) -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(booking.router)
     dp.include_router(appointments.router)
+    # Последним: сюда доходит только текст, который не поймали кнопки и команды
+    dp.include_router(ai.router)
     return dp
 
 

@@ -303,3 +303,132 @@ async def test_чужая_запись_недоступна(tg, db, employee, se
     answers = [m for m in session.calls if isinstance(m, AnswerCallbackQuery)]
     assert answers and answers[-1].text == texts.NOT_FOUND
     assert session.sent() == []
+
+
+# ==== Свободный текст (AI) ====
+
+
+class _FakeAI:
+    """Вместо OpenRouter: отдаёт заданное намерение и запоминает, что спрашивали."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.fields: dict = {"action": "unknown"}
+
+    def answer(self, **fields) -> None:
+        self.fields = fields
+
+
+@pytest.fixture
+def fake_ai(monkeypatch):
+    import app.bot.handlers.ai as ai_handler
+    from app.ai import intent as ai_intent
+    from app.bot.ratelimit import SlidingWindowLimiter
+    from app.config.settings import Settings
+
+    fake = _FakeAI()
+
+    async def fake_parse(text, services, employees, today):
+        fake.calls.append(text)
+        return ai_intent.Intent(**fake.fields)
+
+    monkeypatch.setattr(ai_intent, "parse", fake_parse)
+    monkeypatch.setattr(
+        ai_handler, "get_settings", lambda: Settings(_env_file=None, openrouter_api_key="sk-or-test")
+    )
+    monkeypatch.setattr(ai_handler, "ai_limiter", SlidingWindowLimiter(100, 3600))
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_фраза_ведёт_к_слотам_и_записи(tg, db, employee, service, workday, fake_ai):
+    """«На консультацию в понедельник утром» → утренние слоты → нажатие → подтверждение → запись."""
+    import datetime as dt
+
+    from app.bot import services as bot_services
+
+    _bot, _dp, session = tg
+    fake_ai.answer(
+        action="book", service="консультацию", date=workday,
+        time_from=dt.time(9), time_to=dt.time(12),
+    )
+
+    await _feed(tg, _message("хочу на консультацию в понедельник утром"))
+    assert any("Нашёл свободное время" in text for text in session.sent())
+    buttons = session.buttons()
+    assert "09:00" in buttons and all(b < "12:00" for b in buttons)
+    session.clear()
+
+    # Дальше — обычные кнопки записи, без всякого AI
+    await _feed(tg, _callback(SlotCB(hour=9, minute=0).pack()))
+    assert texts.BTN_YES in session.buttons()
+    session.clear()
+
+    await _feed(tg, _callback(ConfirmCB(action="yes").pack()))
+    assert any("Записал вас" in text for text in session.sent())
+
+    client = bot_services.get_or_create_client(db, TG_USER_ID, "petr", "Пётр")
+    [booking] = bot_services.my_bookings(db, client["id"])
+    assert booking["start"] == "09:00"
+
+
+@pytest.mark.asyncio
+async def test_без_даты_фраза_открывает_календарь(tg, db, employee, service, fake_ai):
+    _bot, _dp, session = tg
+    fake_ai.answer(action="book", service="Консультация")
+    await _feed(tg, _message("запишите меня на консультацию"))
+    assert texts.CHOOSE_DAY in session.sent()
+
+
+@pytest.mark.asyncio
+async def test_занятое_окно_показывает_весь_день(tg, db, employee, service, workday, fake_ai):
+    import datetime as dt
+
+    _bot, _dp, session = tg
+    fake_ai.answer(action="book", date=workday, time_from=dt.time(19), time_to=dt.time(21))
+    await _feed(tg, _message("в понедельник вечером"))
+    assert any("всё занято" in text for text in session.sent())
+    assert "09:00" in session.buttons()
+
+
+@pytest.mark.asyncio
+async def test_мои_записи_текстом(tg, db, fake_ai):
+    _bot, _dp, session = tg
+    fake_ai.answer(action="my_bookings")
+    await _feed(tg, _message("когда я записан?"))
+    assert texts.NO_BOOKINGS in session.sent()
+
+
+@pytest.mark.asyncio
+async def test_непонятная_фраза_не_создаёт_записи(tg, db, employee, service, fake_ai):
+    from sqlalchemy import func, select
+
+    from app.models.booking import Booking
+
+    _bot, _dp, session = tg
+    fake_ai.answer(action="unknown")
+    await _feed(tg, _message("какая погода на Марсе"))
+    assert texts.AI_NOT_UNDERSTOOD in session.sent()
+    assert db.scalar(select(func.count()).select_from(Booking)) == 0
+
+
+@pytest.mark.asyncio
+async def test_кнопки_и_команды_не_уходят_в_ai(tg, db, fake_ai):
+    _bot, _dp, session = tg
+    await _feed(tg, _message(texts.BTN_BOOK))
+    await _feed(tg, _message("/неизвестная"))
+    assert fake_ai.calls == []
+    assert texts.NO_SERVICES in session.sent()
+
+
+@pytest.mark.asyncio
+async def test_без_ключа_бот_просит_кнопки(tg, db, monkeypatch):
+    import app.bot.handlers.ai as ai_handler
+    from app.config.settings import Settings
+
+    monkeypatch.setattr(
+        ai_handler, "get_settings", lambda: Settings(_env_file=None, openrouter_api_key="")
+    )
+    _bot, _dp, session = tg
+    await _feed(tg, _message("хочу записаться"))
+    assert texts.AI_DISABLED in session.sent()

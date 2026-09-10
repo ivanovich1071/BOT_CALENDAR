@@ -100,5 +100,6 @@ async def health() -> JSONResponse:
             "redis": _service_available(redis_host, redis_port),
             "scheduler": scheduler_module._scheduler is not None,
             "google_configured": bool(settings.google_client_id and settings.google_client_secret),
+            "ai_configured": bool(settings.openrouter_api_key),
         }
     )
