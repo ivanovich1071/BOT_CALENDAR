@@ -103,19 +103,17 @@ Google пускает OAuth только на HTTPS-домен, голый IP н
 
 ### 1. Доступ по ключу
 
-Деплой ходит на сервер по отдельному ключу без пароля — пароль root скриптам не
-нужен. В PowerShell:
+Деплой ходит на сервер по отдельному ключу без пароля. Положить ключ — один раз:
+двойной клик по **`Подключить сервер.bat`** в корне проекта (адрес возьмёт из
+`.env.deploy`, иначе спросит) или в Git Bash:
 
-```powershell
-ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\bot_calendar_deploy
+```bash
+bash scripts/add_deploy_key.sh IP
 ```
 
-На вопрос о пароле ключа — дважды Enter. Затем положить открытую часть на
-сервер; пароль root вводится один раз, здесь:
-
-```powershell
-type $env:USERPROFILE\.ssh\bot_calendar_deploy.pub | ssh root@IP "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-```
+Скрипт создаст ключ `~/.ssh/bot_calendar_deploy`, если его ещё нет, положит его
+на сервер — здесь один раз спросит пароль root, и вводит его человек, — и сам
+проверит вход без пароля. Повторный запуск не дублирует ключ.
 
 ### 2. Подготовка сервера
 
