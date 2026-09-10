@@ -1,0 +1,7 @@
+# Файлы, которые исполняются на Linux-сервере, всегда с LF —
+# даже если репозиторий склонирован на Windows с core.autocrlf=true
+*.sh                    text eol=lf
+Dockerfile              text eol=lf
+*.yml                   text eol=lf
+deploy/*.conf           text eol=lf
+requirements*.txt       text eol=lf

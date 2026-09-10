@@ -1,6 +1,8 @@
 # Резервные копии
 
 Что копировать, как восстанавливать и как убедиться, что копия рабочая.
+Команды — для сервера, установленного по [INSTALL.md](INSTALL.md): код в
+`/opt/bot-calendar`, всё в Docker.
 
 ---
 
@@ -28,32 +30,33 @@
 ## Ручная копия
 
 ```bash
-docker exec bc_postgres pg_dump -U booking -d booking -Fc > booking_$(date +%F).dump
+cd /opt/bot-calendar
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U booking -d booking -Fc > booking_$(date +%F).dump
+cp .env env_$(date +%F).backup
 ```
 
 Флаг `-Fc` — сжатый формат: меньше по размеру и восстанавливается выборочно.
-
-Копия `.env` рядом:
-
-```bash
-cp /opt/booking/.env env_$(date +%F).backup
-```
+`-T` обязателен: без него docker испортит бинарный дамп символами терминала.
 
 ---
 
 ## Автоматически, раз в сутки
 
-Скрипт `/opt/booking/backup.sh`:
+Скрипт `/opt/bot-calendar-backup.sh` — вне каталога с кодом, чтобы `git reset` при
+деплое его не трогал:
 
 ```bash
 #!/bin/bash
-set -e
-DIR=/var/backups/booking
+set -euo pipefail
+DIR=/var/backups/bot-calendar
 DAY=$(date +%F)
 mkdir -p "$DIR"
+cd /opt/bot-calendar
 
-docker exec bc_postgres pg_dump -U booking -d booking -Fc > "$DIR/db_$DAY.dump"
-cp /opt/booking/.env "$DIR/env_$DAY.backup"
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U booking -d booking -Fc > "$DIR/db_$DAY.dump"
+cp .env "$DIR/env_$DAY.backup"
 
 # Держим 14 дней
 find "$DIR" -name 'db_*.dump' -mtime +14 -delete
@@ -61,19 +64,23 @@ find "$DIR" -name 'env_*.backup' -mtime +14 -delete
 ```
 
 ```bash
-sudo chmod +x /opt/booking/backup.sh
-sudo chmod 700 /var/backups/booking
-sudo crontab -e
+chmod 700 /opt/bot-calendar-backup.sh
+mkdir -p /var/backups/bot-calendar && chmod 700 /var/backups/bot-calendar
+crontab -e
 ```
 
 Строка в crontab — каждый день в 3:30 ночи:
 
 ```
-30 3 * * * /opt/booking/backup.sh >> /var/log/booking-backup.log 2>&1
+30 3 * * * /opt/bot-calendar-backup.sh >> /var/log/bot-calendar-backup.log 2>&1
 ```
 
-`chmod 700` не формальность: в дампе лежат телефоны и имена клиентов, читать их
-всем пользователям сервера незачем.
+`chmod 700` не формальность: в дампе лежат телефоны и имена клиентов, а в копии
+`.env` — все ключи.
+
+На сервере с 10 ГБ диска следите за местом: `df -h /`. Дамп небольшой базы
+записей — единицы мегабайт, но 14 копий плюс образы Docker со временем
+набегают.
 
 ### Копия за пределами сервера
 
@@ -81,7 +88,7 @@ sudo crontab -e
 умерло всё. Добавьте выгрузку в другое место:
 
 ```bash
-rsync -az /var/backups/booking/ backup@другой-сервер:/backups/booking/
+rsync -az /var/backups/bot-calendar/ backup@другой-сервер:/backups/bot-calendar/
 ```
 
 Или любое S3-совместимое хранилище через `rclone`. Правило простое: копия,
@@ -93,42 +100,45 @@ rsync -az /var/backups/booking/ backup@другой-сервер:/backups/bookin
 
 ### Полное, на чистом сервере
 
-1. Пройти [INSTALL.md](INSTALL.md) до шага с миграциями **включительно**
-   (`alembic upgrade head` можно пропустить — структура придёт из дампа).
-2. Вернуть `.env` из копии.
-3. Залить базу:
+1. Пройти [INSTALL.md](INSTALL.md) до запуска контейнеров, вернуть `.env` из
+   копии — **с тем же** `ENCRYPTION_KEY`.
+2. Поднять только базу:
 
 ```bash
-docker exec -i bc_postgres pg_restore -U booking -d booking --clean --if-exists < db_2026-09-09.dump
+cd /opt/bot-calendar
+docker compose -f docker-compose.prod.yml up -d postgres
 ```
 
-4. Догнать миграции, если код новее дампа:
+3. Залить дамп:
 
 ```bash
-.venv/bin/alembic upgrade head
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_restore -U booking -d booking --clean --if-exists < db_2026-09-10.dump
 ```
 
-5. Запустить и проверить:
+4. Поднять остальное — миграции догонят схему, если код новее дампа:
 
 ```bash
-sudo systemctl start booking-api booking-bot
+docker compose -f docker-compose.prod.yml up -d
 curl -s http://127.0.0.1:8000/health
 ```
 
 `--clean --if-exists` перезаписывает существующие таблицы. На боевой базе это
-означает потерю всего, что появилось после дампа, — команда делает ровно то,
-что написано.
+означает потерю всего, что появилось после дампа, — команда делает ровно то, что
+написано.
 
 ### Проверить копию, ничего не сломав
 
-Разворачивать дамп в отдельную базу — единственный способ узнать, что копия
+Развернуть дамп в отдельную базу — единственный способ узнать, что копия
 рабочая, до того как она понадобится:
 
 ```bash
-docker exec bc_postgres createdb -U booking booking_check
-docker exec -i bc_postgres pg_restore -U booking -d booking_check < db_2026-09-09.dump
-docker exec bc_postgres psql -U booking -d booking_check -c "select count(*) from bookings;"
-docker exec bc_postgres dropdb -U booking booking_check
+cd /opt/bot-calendar
+DC="docker compose -f docker-compose.prod.yml exec -T postgres"
+$DC createdb -U booking booking_check
+$DC pg_restore -U booking -d booking_check < /var/backups/bot-calendar/db_2026-09-10.dump
+$DC psql -U booking -d booking_check -c "select count(*) from bookings;"
+$DC dropdb -U booking booking_check
 ```
 
 Разумно делать это раз в месяц. Копия, которую ни разу не пробовали
@@ -139,16 +149,18 @@ docker exec bc_postgres dropdb -U booking booking_check
 ## Перед обновлением системы
 
 ```bash
-docker exec bc_postgres pg_dump -U booking -d booking -Fc > before_update.dump
+cd /opt/bot-calendar
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U booking -d booking -Fc > /var/backups/bot-calendar/before_update.dump
 ```
 
-Миграции могут менять структуру необратимо. Тридцать секунд на дамп дешевле
-любого разбирательства потом.
+Миграции применяются сами при старте API и могут менять структуру необратимо.
+Тридцать секунд на дамп дешевле любого разбирательства потом.
 
 ---
 
 ## Персональные данные
 
-В дампе — имена, телефоны и `telegram_id` клиентов. Копии стоит хранить
-зашифрованными, а срок хранения ограничить: две недели ежедневных плюс
-несколько месячных — обычно достаточно и для аварий, и для здравого смысла.
+В дампе — имена, телефоны и `telegram_user_id` клиентов. Копии стоит хранить
+зашифрованными, а срок хранения ограничить: две недели ежедневных плюс несколько
+месячных — обычно достаточно и для аварий, и для здравого смысла.

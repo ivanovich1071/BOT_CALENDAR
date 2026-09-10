@@ -1,12 +1,8 @@
 # Установка
 
-Два сценария: на машину разработчика (Windows) и на сервер (Ubuntu). Оба
-приводят к одному результату — работают админка и бот, записи попадают в Google
-Calendar.
-
-> Продакшн-сборка в Docker (`Dockerfile`, `docker-compose.prod.yml`) — этап 6
-> дорожной карты. Пока сервер поднимается на venv + systemd, как описано ниже;
-> это рабочий вариант, а не временная заглушка.
+Два сценария: на машину разработчика (Windows) — для доработки, и на сервер
+(Ubuntu 24.04, Docker) — для работы. Оба приводят к одному результату: работают
+админка и бот, записи попадают в Google Calendar.
 
 ---
 
@@ -16,10 +12,11 @@ Calendar.
 |---|---|---|
 | Токен Telegram-бота | @BotFather | [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) |
 | Google OAuth Client ID и Secret | console.cloud.google.com | [GOOGLE_SETUP.md](GOOGLE_SETUP.md) |
-| Ключ OpenRouter | openrouter.ai/keys | [OPENROUTER_SETUP.md](OPENROUTER_SETUP.md) — нужен только для AI-режима, этап 5 |
+| Ключ OpenRouter | openrouter.ai/keys | [OPENROUTER_SETUP.md](OPENROUTER_SETUP.md) — для записи фразой; без ключа бот работает кнопками |
 
-Python 3.11 или новее. PostgreSQL 16 и Redis 7 — ставятся контейнерами, отдельно
-устанавливать не нужно.
+Для сервера дополнительно: VPS на Ubuntu 24.04 от 1 ГБ RAM и 10 ГБ диска,
+лучше в Европе — чтобы Telegram, Google и OpenRouter были доступны без
+сюрпризов.
 
 ---
 
@@ -32,8 +29,7 @@ docker compose -f docker-compose.dev.yml --env-file .env up -d
 ```
 
 Поднимает PostgreSQL на порту **5433** и Redis на 6379. Порт 5433, а не 5432,
-намеренно: на машине разработчика часто уже стоит свой PostgreSQL, и конфликта
-портов быть не должно.
+намеренно: на машине разработчика часто уже стоит свой PostgreSQL.
 
 ### 2. Зависимости
 
@@ -86,176 +82,174 @@ Google в базе. Сменили — все сотрудники подклю�
 
 ---
 
-## На сервер (Ubuntu 22.04+)
+## На сервер (Ubuntu 24.04, Docker)
 
-Дальше `example.com` — ваш домен, он должен уже указывать A-записью на IP
-сервера. Все команды от пользователя с sudo.
+Всё работает в контейнерах: PostgreSQL, Redis, API с админкой и бот. Наружу
+смотрит только nginx на хосте с сертификатом Let's Encrypt; порты базы и Redis
+не публикуются, API слушает только `127.0.0.1`.
 
-### 1. Система
+Дальше `IP` — адрес сервера, `DOMAIN` — адрес админки. Команды выполняются из
+Git Bash в корне репозитория.
+
+### Какой адрес выбрать
+
+Google пускает OAuth только на HTTPS-домен, голый IP не подойдёт.
+
+| Вариант | Как | Оговорка |
+|---|---|---|
+| Свой домен или поддомен | A-запись на IP сервера | Лучший вариант для боевой системы |
+| Поддомен nip.io | `calendar.1-2-3-4.nip.io` — IP через дефисы, резолвится сам | nip.io нет в Public Suffix List: лимит Let's Encrypt общий для всех его пользователей, и сертификат иногда не выдаётся |
+| DuckDNS | Бесплатный поддомен на duckdns.org с IP сервера | Нужна регистрация на duckdns.org. Домен есть в PSL — у него свой лимит |
+
+### 1. Доступ по ключу
+
+Деплой ходит на сервер по отдельному ключу без пароля — пароль root скриптам не
+нужен. В PowerShell:
+
+```powershell
+ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\bot_calendar_deploy
+```
+
+На вопрос о пароле ключа — дважды Enter. Затем положить открытую часть на
+сервер; пароль root вводится один раз, здесь:
+
+```powershell
+type $env:USERPROFILE\.ssh\bot_calendar_deploy.pub | ssh root@IP "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+### 2. Подготовка сервера
+
+Один раз:
 
 ```bash
-sudo apt update && sudo apt install -y python3.11 python3.11-venv git nginx
-curl -fsSL https://get.docker.com | sudo sh
+ssh -i ~/.ssh/bot_calendar_deploy root@IP 'bash -s' -- DOMAIN < scripts/server_bootstrap.sh
 ```
 
-### 2. Код и окружение
+Скрипт ставит Docker, nginx и certbot из репозитория Ubuntu, создаёт swap на
+2 ГБ (при 1 ГБ RAM без него сборка рискует упереться в память), открывает в
+файрволе только 22, 80 и 443, клонирует код в `/opt/bot-calendar` и настраивает
+nginx на `DOMAIN`. Повторный запуск безопасен.
+
+### 3. Конфигурация
+
+**Если на вашей машине есть заполненный `.env`** — соберите из него серверный.
+Ключи интеграций переносятся, секреты приложения генерируются заново, значения
+нигде не печатаются:
 
 ```bash
-sudo mkdir -p /opt/booking && sudo chown $USER /opt/booking
-git clone https://github.com/ivanovich1071/BOT_CALENDAR.git /opt/booking
-cd /opt/booking
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+python scripts/make_prod_env.py DOMAIN
+scp -i ~/.ssh/bot_calendar_deploy .env.production root@IP:/opt/bot-calendar/.env
+ssh -i ~/.ssh/bot_calendar_deploy root@IP "chmod 600 /opt/bot-calendar/.env"
 ```
 
-### 3. Инфраструктура и конфигурация
+**Иначе** — прямо на сервере: `cp .env.example .env` и заполнить `APP_ENV=production`,
+`APP_BASE_URL=https://DOMAIN`, `GOOGLE_REDIRECT_URI=https://DOMAIN/oauth/google/callback`,
+`SECRET_KEY`, `ENCRYPTION_KEY`, `POSTGRES_PASSWORD` (только латиница и цифры — он
+попадает в строку подключения), `BOT_TOKEN`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY`. `DATABASE_URL` и `REDIS_URL`
+заполнять не нужно — их собирает `docker-compose.prod.yml`.
+
+### 4. Сертификат
 
 ```bash
-cp .env.example .env
-nano .env
+ssh -i ~/.ssh/bot_calendar_deploy root@IP "certbot --nginx -d DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --redirect"
 ```
 
-Отличия от локальной настройки:
+`--agree-tos` — это согласие владельца сервера с условиями Let's Encrypt. Без
+email писем об истечении не будет, но они и не нужны: продление идёт само по
+таймеру certbot.
 
-```
-APP_ENV=production
-APP_BASE_URL=https://example.com
-GOOGLE_REDIRECT_URI=https://example.com/oauth/google/callback
-```
+### 5. Запуск
 
-Этот же адрес добавьте в Google Cloud → Credentials → ваш OAuth-клиент →
-Authorized redirect URIs. Расхождение хотя бы в одном символе даёт
-`redirect_uri_mismatch`.
+Если бот с этим токеном запущен где-то ещё — например, локально, — остановите
+его: второй экземпляр Telegram отклонит.
 
 ```bash
-docker compose -f docker-compose.dev.yml --env-file .env up -d
-.venv/bin/alembic upgrade head
-.venv/bin/python -m app.cli create-admin
+ssh -i ~/.ssh/bot_calendar_deploy root@IP "cd /opt/bot-calendar && docker compose -f docker-compose.prod.yml up -d --build"
 ```
 
-### 4. Автозапуск: два сервиса systemd
+Первая сборка — 3–5 минут. Миграции применяются сами перед стартом API, бот
+стартует после API.
 
-`/etc/systemd/system/booking-api.service`:
-
-```ini
-[Unit]
-Description=Booking API + admin panel
-After=network.target docker.service
-
-[Service]
-WorkingDirectory=/opt/booking
-ExecStart=/opt/booking/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=5
-User=booking
-
-[Install]
-WantedBy=multi-user.target
-```
-
-`/etc/systemd/system/booking-bot.service`:
-
-```ini
-[Unit]
-Description=Booking Telegram bot
-After=network.target booking-api.service
-
-[Service]
-WorkingDirectory=/opt/booking
-ExecStart=/opt/booking/.venv/bin/python -m app.bot.main
-Restart=always
-RestartSec=10
-User=booking
-
-[Install]
-WantedBy=multi-user.target
-```
+### 6. Администратор
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin booking
-sudo chown -R booking /opt/booking
-sudo systemctl daemon-reload
-sudo systemctl enable --now booking-api booking-bot
+ssh -t -i ~/.ssh/bot_calendar_deploy root@IP "cd /opt/bot-calendar && docker compose -f docker-compose.prod.yml exec api python -m app.cli create-admin"
 ```
 
-`Restart=always` у бота не косметика: связь с `api.telegram.org` бывает
-прерывистой, и процесс должен подниматься сам.
+Пароль вводит владелец, в скриптах и логах его нет.
 
-### 5. nginx и TLS
+### 7. Google
 
-`/etc/nginx/sites-available/booking`:
-
-```nginx
-server {
-    listen 80;
-    server_name example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/booking /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d example.com
-```
-
-Certbot сам перепишет конфиг под HTTPS и настроит продление. HTTPS обязателен:
-Google не примет `redirect_uri` на голом HTTP нигде, кроме `localhost`.
+В Google Cloud → Credentials → ваш OAuth-клиент → Authorized redirect URIs
+добавьте `https://DOMAIN/oauth/google/callback`. Gmail каждого сотрудника,
+который будет подключать календарь, — в Audience → Test users.
 
 ---
 
 ## Проверка после установки
 
 ```bash
-curl -s https://example.com/health
+curl -s https://DOMAIN/health
 ```
 
 Ожидаемо:
 
 ```json
 {"status":"ok","env":"production","postgres":true,"redis":true,
- "scheduler":true,"google_configured":true}
+ "scheduler":true,"google_configured":true,"ai_configured":true}
 ```
 
-`false` в любом поле — смотрите таблицу ошибок ниже.
+`false` в любом поле — смотрите таблицу ниже.
 
 Дальше по шагам:
 
-1. Войти в `/admin` под созданным администратором.
-2. `/admin/employees` — добавить специалиста.
-3. `/admin/services` — добавить услугу с длительностью.
-4. `/admin/schedule` — задать рабочие дни, часы и перерыв.
-5. `/admin/calendars` — «Подключить Google», выбрать рабочий календарь.
-6. `/admin/bookings/new` — создать запись и убедиться, что событие появилось
-   в Google Calendar.
-7. Открыть бота в Telegram, `/start`, пройти запись до конца.
-
-Полный сквозной прогон админки одной командой:
-
-```bash
-.venv/bin/python scripts/smoke_admin.py
-```
+1. Войти в `https://DOMAIN/admin`.
+2. `/admin/employees`, `/admin/services`, `/admin/schedule` — специалист, услуга,
+   рабочие дни.
+3. `/admin/calendars` — «Подключить Google», выбрать рабочий календарь.
+4. В боте: `/start` → «Записаться» до конца → событие появилось в Google Calendar.
+5. В боте текстом: «хочу на консультацию завтра после обеда» → бот показал слоты.
+6. `/admin/settings` — напоминания включены, `24, 1`.
 
 ---
 
 ## Обновление
 
+С машины разработчика, одной командой:
+
 ```bash
-cd /opt/booking
-git pull
-.venv/bin/pip install -r requirements.txt
-.venv/bin/alembic upgrade head
-sudo systemctl restart booking-api booking-bot
+bash scripts/deploy.sh
 ```
 
-Перед `alembic upgrade` на боевой системе делайте дамп — [BACKUP.md](BACKUP.md).
+Адрес сервера — в файле `.env.deploy` в корне репозитория (в git не попадает):
+
+```
+DEPLOY_HOST=IP
+DEPLOY_DOMAIN=DOMAIN
+```
+
+Скрипт отказывается работать, если есть незакоммиченные или неотправленные
+изменения. Дальше в одной SSH-сессии — хостинги режут частые подключения —
+подтягивает код, пересобирает контейнеры и проверяет `/health` изнутри и
+снаружи по HTTPS.
+
+Перед обновлением, которое меняет структуру базы, сделайте дамп — [BACKUP.md](BACKUP.md).
+
+---
+
+## Обслуживание
+
+Команды выполняются на сервере в `/opt/bot-calendar`:
+
+| Задача | Команда |
+|---|---|
+| Состояние контейнеров | `docker compose -f docker-compose.prod.yml ps` |
+| Логи API / бота | `docker compose -f docker-compose.prod.yml logs -f --tail 100 api` (или `bot`) |
+| Применить правку `.env` | `docker compose -f docker-compose.prod.yml up -d` |
+| Расход памяти | `docker stats --no-stream` |
+
+Логи ротируются сами: не больше 30 МБ на контейнер.
 
 ---
 
@@ -263,11 +257,15 @@ sudo systemctl restart booking-api booking-bot
 
 | Симптом | Причина и что делать |
 |---|---|
-| `"postgres": false` | Контейнер не поднялся: `docker compose ps`, `docker logs bc_postgres`. Или пароль в `DATABASE_URL` не совпадает с `POSTGRES_PASSWORD` |
-| `"redis": false` | `docker logs bc_redis`. Без Redis система работает, но состояние диалогов бота живёт в памяти процесса и теряется при перезапуске |
-| `"google_configured": false` | Не заполнены `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Настройки читаются при старте — после правки `.env` нужен перезапуск |
-| `"scheduler": false` | Планировщик не стартовал: `journalctl -u booking-api -n 50`. Записи работают, обратная синхронизация с Google — нет |
-| Бот не отвечает | `journalctl -u booking-bot -n 50`. Пустой `BOT_TOKEN` даёт явное сообщение при старте |
+| `"postgres": false` | `logs postgres`. Если `POSTGRES_PASSWORD` меняли после первого запуска — база в томе помнит старый пароль |
+| `"redis": false` | `logs redis`. Без Redis система работает, но состояние диалогов живёт в памяти бота |
+| `"google_configured": false` | Не заполнены `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, или `.env` правили без `up -d` |
+| `"ai_configured": false` | Не заполнен `OPENROUTER_API_KEY` — бот работает кнопками |
+| `"scheduler": false` | `logs api`. Записи работают, синхронизация с Google и напоминания — нет |
+| Бот не отвечает | `logs bot`. `TelegramConflictError` — где-то запущен второй экземпляр с тем же токеном |
+| certbot: `too many certificates` для nip.io | Лимит Let's Encrypt, общий для всех на nip.io. Перейти на DuckDNS или свой домен |
 | `redirect_uri_mismatch` | Адрес в Google Cloud не совпадает с `GOOGLE_REDIRECT_URI` посимвольно |
 | `access_denied` при подключении Google | Gmail сотрудника не добавлен в Test users — [GOOGLE_SETUP.md](GOOGLE_SETUP.md), шаг 4 |
+| Сборка или контейнеры падают по памяти | `free -m` — должен быть swap 2 ГБ, его создаёт `server_bootstrap.sh` |
+| SSH вдруг перестал пускать | Хостинг временно блокирует после частых подключений. Подождите 5–10 минут |
 | Alembic падает с `UnicodeDecodeError` | Только Windows с русской локалью. Обход: `alembic upgrade head --sql`, применить через `docker exec bc_postgres psql` |
