@@ -19,7 +19,12 @@ apt-get update -q
 apt-get install -y -q docker.io docker-compose-v2 nginx certbot python3-certbot-nginx ufw git curl
 
 echo "==> Swap 2 ГБ: при 1 ГБ RAM без него сборка образа и PostgreSQL рискуют упереться в OOM"
-if ! swapon --show | grep -q '^/swapfile'; then
+# Хостинг может заранее создать маленький /swapfile — смотрим на размер, а не на наличие
+if [ "$(free -m | awk '/^Swap:/{print $2}')" -lt 1500 ]; then
+  if swapon --show=NAME --noheadings | grep -qx /swapfile; then
+    swapoff /swapfile
+    rm -f /swapfile
+  fi
   fallocate -l 2G /swapfile
   chmod 600 /swapfile
   mkswap /swapfile >/dev/null
