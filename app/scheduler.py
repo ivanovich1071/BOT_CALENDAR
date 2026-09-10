@@ -5,11 +5,14 @@
 защищает Redis-lock: задачу выполняет тот, кто первым взял блокировку.
 """
 
+import asyncio
 import logging
 
 import redis as redis_lib
+from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.bot.notify import send_due_reminders
 from app.config.settings import get_settings
 from app.db.database import SessionLocal
 from app.services import calendar_service
@@ -18,6 +21,10 @@ from app.services.app_settings_service import GOOGLE_SYNC, get_setting
 logger = logging.getLogger(__name__)
 
 GOOGLE_SYNC_LOCK = "scheduler:google_sync"
+REMINDERS_LOCK = "scheduler:reminders"
+
+# Окно напоминания — 30 минут (reminder_service.REMINDER_GRACE): шесть попыток на обрыв связи
+REMINDERS_INTERVAL_MINUTES = 5
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -35,6 +42,14 @@ def _acquire(lock_key: str, ttl_seconds: int):
         return None
 
 
+def _release(lock) -> None:
+    if lock:
+        try:
+            lock.release()
+        except Exception:  # noqa: BLE001 — истёкший lock освобождать уже нечего
+            pass
+
+
 def sync_google_job() -> None:
     """Догоняет правки, сделанные сотрудниками вручную в Google Calendar."""
     lock = _acquire(GOOGLE_SYNC_LOCK, ttl_seconds=300)
@@ -49,11 +64,28 @@ def sync_google_job() -> None:
         logger.exception("Синхронизация Google сорвалась")
     finally:
         db.close()
-        if lock:
-            try:
-                lock.release()
-            except Exception:  # noqa: BLE001
-                pass
+        _release(lock)
+
+
+async def reminders_job() -> None:
+    """Напоминания клиентам о визите — за сколько часов, решает настройка в админке."""
+    token = get_settings().bot_token
+    if not token:
+        return
+    lock = await asyncio.to_thread(_acquire, REMINDERS_LOCK, 240)
+    if lock is False:
+        return  # рассылка уже идёт в другом воркере
+    # Без parse_mode: имя специалиста с «<» или «&» не должно ломать разметку
+    bot = Bot(token)
+    try:
+        sent = await send_due_reminders(bot)
+        if sent:
+            logger.info("Напоминаний отправлено — %s", sent)
+    except Exception:  # noqa: BLE001
+        logger.exception("Рассылка напоминаний сорвалась")
+    finally:
+        await bot.session.close()
+        await asyncio.to_thread(_release, lock)
 
 
 def sync_interval_minutes() -> int:
@@ -79,8 +111,21 @@ def start_scheduler() -> AsyncIOScheduler:
         coalesce=True,          # проспали несколько тиков — выполняем один раз
         replace_existing=True,
     )
+    _scheduler.add_job(
+        reminders_job,
+        "interval",
+        minutes=REMINDERS_INTERVAL_MINUTES,
+        id="reminders",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
     _scheduler.start()
-    logger.info("Планировщик запущен: синхронизация Google каждые %s мин", minutes)
+    logger.info(
+        "Планировщик запущен: синхронизация Google каждые %s мин, напоминания каждые %s мин",
+        minutes,
+        REMINDERS_INTERVAL_MINUTES,
+    )
     return _scheduler
 
 

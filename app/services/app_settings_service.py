@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 # Ключи настроек
 GOOGLE_SYNC = "google_sync"          # {"interval_minutes": 10}
-REMINDERS = "reminders"              # {"hours_before": [24, 1]}
+REMINDERS = "reminders"              # {"enabled": true, "hours_before": [24, 1]}
 
 DEFAULTS: dict[str, dict] = {
     GOOGLE_SYNC: {"interval_minutes": 10},
-    REMINDERS: {"hours_before": [24, 1]},
+    REMINDERS: {"enabled": True, "hours_before": [24, 1]},
 }
 
 

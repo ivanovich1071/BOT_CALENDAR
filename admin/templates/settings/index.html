@@ -16,6 +16,26 @@
   {% endfor %}
 </div>
 
+<form method="post" action="/admin/settings/reminders" class="bg-white rounded-xl shadow p-6 max-w-2xl mb-8 space-y-4 text-sm">
+  <div>
+    <h2 class="font-semibold">Напоминания клиентам</h2>
+    <p class="text-xs text-slate-500 mt-1">
+      Сообщение в Telegram с кнопками «Перенести» и «Отменить». Проверка идёт раз в 5 минут.
+      Клиент, записавшийся уже после момента напоминания, его не получает.
+    </p>
+  </div>
+  <label class="flex items-center gap-2">
+    <input type="checkbox" name="enabled" {{ 'checked' if reminders_enabled }} class="rounded"> Отправлять напоминания
+  </label>
+  <label class="block">
+    <span class="text-slate-600">За сколько часов до визита</span>
+    <input name="hours" value="{{ reminder_hours }}" placeholder="24, 1"
+           class="mt-1 block w-48 border border-slate-300 rounded-lg px-3 py-2">
+    <span class="text-xs text-slate-500">Целые часы через запятую: от 1 до 168, не больше трёх значений</span>
+  </label>
+  <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+</form>
+
 <div class="bg-white rounded-xl shadow p-6 max-w-2xl space-y-2 text-sm">
   <h2 class="font-semibold mb-2">Система</h2>
   <div class="flex justify-between border-b border-slate-100 py-2"><span class="text-slate-500">Окружение</span><span>{{ app_env }}</span></div>
