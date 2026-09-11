@@ -34,6 +34,14 @@ MAX_TOOL_ROUNDS = 4
 TOOL_LOG_CHARS = 2000
 HISTORY_RETENTION_DAYS = 30
 
+# Живая проверка 11.09: «нажмите «Записаться»» без вызова propose_booking — карточки нет
+BOOK_BUTTON = "«Записаться»"
+BOOK_NUDGE = (
+    "[Служебно, не от клиента] Ты просишь нажать «Записаться», но не вызвал propose_booking — "
+    "карточки с кнопкой клиент не увидит. Если время выбрано — вызови propose_booking сейчас. "
+    "Если нет — ответь заново, не упоминая эту кнопку."
+)
+
 
 @dataclass
 class AgentReply:
@@ -113,6 +121,7 @@ async def respond(client_id: int, text: str, button_context: str | None = None) 
 
     ctx = tools.ToolContext(client_id=client_id)
     answer = ""
+    nudged = False
     try:
         for round_no in range(MAX_TOOL_ROUNDS + 1):
             last_round = round_no == MAX_TOOL_ROUNDS
@@ -124,6 +133,11 @@ async def respond(client_id: int, text: str, button_context: str | None = None) 
             )
             if not reply.tool_calls or last_round:
                 answer = reply.content.strip()
+                if not last_round and not nudged and ctx.proposal is None and BOOK_BUTTON in answer:
+                    # Модель просит нажать кнопку, но карточку не вызвала — клиент не нашёл бы кнопки
+                    nudged = True
+                    messages += [{"role": "assistant", "content": answer}, {"role": "user", "content": BOOK_NUDGE}]
+                    continue
                 break
             messages.append({"role": "assistant", "content": reply.content or None, "tool_calls": reply.tool_calls})
             for call in reply.tool_calls:

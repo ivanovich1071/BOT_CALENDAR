@@ -464,6 +464,25 @@ async def test_текст_после_выбора_кнопками_знает_в
 
 
 @pytest.mark.asyncio
+async def test_кнопка_без_карточки_возвращает_модель_к_propose_booking(tg, db, employee, service, workday, fake_ai):
+    """Живая проверка 11.09: модель писала «нажмите «Записаться»», не вызвав propose_booking."""
+    _bot, _dp, session = tg
+    fake_ai.say("Ближайшее — в 11:00. Нажмите «Записаться».")
+    fake_ai.call(
+        "propose_booking", service_id=service.id, employee_id=employee.id,
+        date=workday.isoformat(), time="11:00", summary="Ближайшее время",
+    )
+    fake_ai.say("Подобрал 11:00 — нажмите «Записаться».")
+
+    await _feed(tg, _message("запишите на ближайшее"))
+
+    assert "[Служебно, не от клиента]" in fake_ai.requests[1][-1]["content"]
+    assert texts.BTN_AI_BOOK in session.buttons()
+    assert "Подобрал 11:00 — нажмите «Записаться»." in session.sent()
+    assert "Ближайшее — в 11:00. Нажмите «Записаться»." not in session.sent()
+
+
+@pytest.mark.asyncio
 async def test_диалог_ведёт_к_карточке_и_записи(tg, db, employee, service, workday, fake_ai):
     """Модель ищет время, предлагает карточку; запись создаёт только нажатие «Записаться»."""
     _bot, _dp, session = tg
