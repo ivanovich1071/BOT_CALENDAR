@@ -8,7 +8,7 @@ from aiogram.types import (
 )
 
 from app.bot import texts
-from app.bot.keyboards.callbacks import BookingCB, ConfirmCB, EmployeeCB, ServiceCB, SlotCB
+from app.bot.keyboards.callbacks import AiBookCB, BookingCB, ConfirmCB, EmployeeCB, ServiceCB, SlotCB
 
 # Слотов в строке: три помещаются на экран телефона без переноса
 SLOTS_PER_ROW = 3
@@ -99,6 +99,15 @@ def booking_actions(booking_id: int) -> InlineKeyboardMarkup:
                     callback_data=BookingCB(action="cancel", booking_id=booking_id).pack(),
                 ),
             ]
+        ]
+    )
+
+
+def ai_proposal() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=texts.BTN_AI_BOOK, callback_data=AiBookCB(action="yes").pack())],
+            [InlineKeyboardButton(text=texts.BTN_AI_OTHER, callback_data=AiBookCB(action="other").pack())],
         ]
     )
 

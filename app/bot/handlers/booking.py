@@ -15,6 +15,7 @@ from app.bot.keyboards.callbacks import CalendarCB, ConfirmCB, EmployeeCB, Servi
 from app.bot.keyboards.menu import main_menu
 from app.bot.keyboards import menu
 from app.bot.states import Booking
+from app.models.enums import SOURCE_TELEGRAM
 from app.services import booking_service
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,9 @@ async def confirm(call: CallbackQuery, state: FSMContext) -> None:
             service_id=data["service_id"],
             day=day,
             slot=data["slot"],
+            # Если выбор времени начался с карточки ИИ — источник и резюме запроса сохраняются
+            source=data.get("source") or SOURCE_TELEGRAM,
+            notes=data.get("notes"),
         )
     except booking_service.SlotTakenError:
         times = await run_db(services.free_times, data["employee_id"], data["service_id"], day)

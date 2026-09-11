@@ -7,7 +7,8 @@
 import time
 from collections import defaultdict, deque
 
-AI_REQUESTS_PER_HOUR = 20
+# Значение по умолчанию; действующий лимит задаётся в настройках ИИ
+AI_REQUESTS_PER_HOUR = 30
 
 
 class SlidingWindowLimiter:
@@ -28,4 +29,11 @@ class SlidingWindowLimiter:
         return True
 
 
-ai_limiter = SlidingWindowLimiter(AI_REQUESTS_PER_HOUR, 3600)
+_limiters: dict[int, SlidingWindowLimiter] = {}
+
+
+def limiter_for(limit: int) -> SlidingWindowLimiter:
+    """Счётчик на час для заданного лимита — лимит меняется в админке без перезапуска."""
+    if limit not in _limiters:
+        _limiters[limit] = SlidingWindowLimiter(limit, 3600)
+    return _limiters[limit]

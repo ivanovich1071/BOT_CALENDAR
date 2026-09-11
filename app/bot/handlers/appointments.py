@@ -26,12 +26,21 @@ router = Router(name="appointments")
 async def my_bookings(message: Message, state: FSMContext) -> None:
     await state.clear()
     client = await current_client(message.from_user)
-    items = await run_db(services.my_bookings, client["id"])
+    await send_booking_cards(message, client["id"], header=True)
+
+
+async def send_booking_cards(
+    message: Message, client_id: int, *, header: bool = False, empty_message: bool = True
+) -> None:
+    """Карточки активных записей с кнопками «Перенести» и «Отменить»."""
+    items = await run_db(services.my_bookings, client_id)
     if not items:
-        await message.answer(texts.NO_BOOKINGS, reply_markup=main_menu())
+        if empty_message:
+            await message.answer(texts.NO_BOOKINGS, reply_markup=main_menu())
         return
 
-    await message.answer(texts.MY_BOOKINGS, reply_markup=main_menu())
+    if header:
+        await message.answer(texts.MY_BOOKINGS, reply_markup=main_menu())
     for card in items:
         await message.answer(
             texts.BOOKING_CARD.format(

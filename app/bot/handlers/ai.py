@@ -1,36 +1,52 @@
-"""Свободный текст: AI разбирает фразу и ведёт клиента в обычный сценарий записи.
+"""Свободный текст: ИИ-консультант отвечает по базе знаний и помогает записаться.
 
 Роутер подключается последним — сюда доходит только текст, который не поймали
-кнопки и команды. Модель ничего не записывает сама: она заполняет поля того же
-диалога, а время клиент выбирает и подтверждает кнопками. Второго пути
-бронирования не появляется.
+кнопки и команды. Модель ничего не записывает сама: она предлагает карточку,
+а запись создаёт нажатие «Записаться» — через тот же services.create, что и кнопки.
 """
 
-import datetime as dt
 import logging
 from contextlib import suppress
+from datetime import date
 
 from aiogram import F, Router
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
-from app.ai import intent as ai_intent
-from app.ai.resolve import filter_times, match_name
+from app.ai import agent
+from app.ai.tools import Proposal
 from app.bot import services, texts
 from app.bot.db import run_db
-from app.bot.handlers import appointments, start
-from app.bot.handlers.booking import show_calendar
+from app.bot.deps import current_client
+from app.bot.formatting import to_telegram_html
+from app.bot.handlers import appointments
+from app.bot.handlers.booking import calendar_markup
 from app.bot.keyboards import menu
+from app.bot.keyboards.callbacks import AiBookCB
 from app.bot.keyboards.menu import main_menu
-from app.bot.ratelimit import ai_limiter
+from app.bot.ratelimit import AI_REQUESTS_PER_HOUR, limiter_for
 from app.bot.states import Booking
 from app.config.settings import get_settings
+from app.models.enums import SOURCE_AI
+from app.services import booking_service
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="ai")
+
+PROPOSAL_KEY = "ai_proposal"
+
+
+def _proposal_text(p: Proposal) -> str:
+    return texts.AI_PROPOSAL.format(
+        employee=p.employee,
+        service=p.service,
+        date=texts.human_date(date.fromisoformat(p.day)),
+        start=p.slot,
+        end=p.end,
+    )
 
 
 @router.message(F.text, ~F.text.startswith("/"))
@@ -38,98 +54,124 @@ async def free_text(message: Message, state: FSMContext) -> None:
     if not get_settings().openrouter_api_key:
         await message.answer(texts.AI_DISABLED, reply_markup=main_menu())
         return
-    if not ai_limiter.allow(message.from_user.id):
+    config = await run_db(agent.ai_config)
+    if not limiter_for(int(config.get("hourly_limit") or AI_REQUESTS_PER_HOUR)).allow(message.from_user.id):
         await message.answer(texts.AI_RATE_LIMITED, reply_markup=main_menu())
         return
 
-    service_items = await run_db(services.active_services)
-    employee_items = await run_db(services.employees_with_schedule)
-    today, last_day = services.horizon()
-
+    client = await current_client(message.from_user)
+    # Текст посреди записи кнопками — клиент передумал: разговор ведёт консультант
+    await state.clear()
     with suppress(TelegramAPIError):
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
-    parsed = await ai_intent.parse(
-        message.text,
-        [s["name"] for s in service_items],
-        [e["name"] for e in employee_items],
-        today,
-    )
-    logger.info("AI: намерение %s", parsed.action)
-
-    if parsed.action == "my_bookings":
-        await appointments.my_bookings(message, state)
-    elif parsed.action == "info":
-        await start.info(message)
-    elif parsed.action == "book":
-        await _continue_booking(message, state, parsed, service_items, employee_items, today, last_day)
-    else:
-        await message.answer(texts.AI_NOT_UNDERSTOOD, reply_markup=main_menu())
-
-
-def _pick(name: str | None, items: list[dict]) -> dict | None:
-    """Названное клиентом — или единственный вариант, если выбирать не из чего."""
-    return match_name(name, items) or (items[0] if len(items) == 1 else None)
-
-
-async def _continue_booking(
-    message: Message,
-    state: FSMContext,
-    parsed: ai_intent.Intent,
-    service_items: list[dict],
-    employee_items: list[dict],
-    today: dt.date,
-    last_day: dt.date,
-) -> None:
-    """Кладёт распознанное в состояние записи и открывает первый недостающий шаг."""
-    await state.clear()
-    if not service_items:
-        await message.answer(texts.NO_SERVICES, reply_markup=main_menu())
+    reply = await agent.respond(client["id"], message.text)
+    if reply.failed:
+        await message.answer(texts.AI_FAILED, reply_markup=main_menu())
         return
 
-    service = _pick(parsed.service, service_items)
-    if service is None:
-        await state.set_state(Booking.service)
-        await message.answer(texts.AI_CHOOSE_SERVICE, reply_markup=menu.services(service_items))
-        return
-    await state.update_data(service_id=service["id"], service_name=service["name"])
+    await message.answer(to_telegram_html(reply.text), reply_markup=main_menu())
+    if reply.proposal:
+        await state.update_data(**{PROPOSAL_KEY: reply.proposal.to_dict()})
+        await message.answer(_proposal_text(reply.proposal), reply_markup=menu.ai_proposal())
+    if reply.show_bookings:
+        await appointments.send_booking_cards(message, client["id"], empty_message=False)
 
-    if not employee_items:
+
+async def _proposal(call: CallbackQuery, state: FSMContext) -> Proposal | None:
+    raw = (await state.get_data()).get(PROPOSAL_KEY)
+    if not raw:
+        await call.answer(texts.AI_PROPOSAL_EXPIRED, show_alert=True)
+        return None
+    return Proposal.from_dict(raw)
+
+
+@router.callback_query(AiBookCB.filter(F.action == "yes"))
+async def book_proposal(call: CallbackQuery, state: FSMContext) -> None:
+    p = await _proposal(call, state)
+    if p is None:
+        return
+    day = date.fromisoformat(p.day)
+    client = await current_client(call.from_user)
+    try:
+        card = await run_db(
+            services.create,
+            client_id=client["id"],
+            employee_id=p.employee_id,
+            service_id=p.service_id,
+            day=day,
+            slot=p.slot,
+            source=SOURCE_AI,
+            notes=p.summary or None,
+        )
+    except booking_service.SlotTakenError:
+        # Пока клиент читал, время заняли — дальше обычным выбором, заметка сохраняется
         await state.clear()
-        await message.answer(texts.NO_EMPLOYEES, reply_markup=main_menu())
-        return
-    employee = _pick(parsed.employee, employee_items)
-    if employee is None:
-        await state.set_state(Booking.employee)
-        await message.answer(texts.CHOOSE_EMPLOYEE, reply_markup=menu.employees(employee_items))
-        return
-    await state.update_data(employee_id=employee["id"], employee_name=employee["name"])
-
-    day = parsed.date if parsed.date and today <= parsed.date <= last_day else None
-    if day is None:
-        await state.set_state(Booking.day)
-        await show_calendar(message, employee["id"], today.year, today.month)
-        return
-
-    times = await run_db(services.free_times, employee["id"], service["id"], day)
-    if not times:
-        await state.set_state(Booking.day)
-        await message.answer(texts.NO_SLOTS.format(date=texts.human_date(day)))
-        await show_calendar(message, employee["id"], day.year, day.month)
-        return
-
-    await state.update_data(day=day.isoformat())
-    await state.set_state(Booking.slot)
-    in_window = filter_times(times, parsed.time_from, parsed.time_to)
-    if in_window:
-        await message.answer(
-            texts.AI_FOUND_SLOTS.format(
-                service=service["name"], employee=employee["name"], date=texts.human_date(day)
-            ),
-            reply_markup=menu.slots(in_window),
+        await state.update_data(
+            service_id=p.service_id,
+            service_name=p.service,
+            employee_id=p.employee_id,
+            employee_name=p.employee,
+            day=p.day,
+            source=SOURCE_AI,
+            notes=p.summary or None,
         )
-    else:
-        await message.answer(
-            texts.AI_WINDOW_EMPTY.format(date=texts.human_date(day)),
-            reply_markup=menu.slots(times),
+        times = await run_db(services.free_times, p.employee_id, p.service_id, day)
+        if times:
+            await state.set_state(Booking.slot)
+            await call.message.edit_text(
+                texts.SLOT_TAKEN + "\n\n" + texts.CHOOSE_SLOT.format(date=texts.human_date(day)),
+                reply_markup=menu.slots(times),
+            )
+        else:
+            await state.set_state(Booking.day)
+            await call.message.edit_text(
+                texts.SLOT_TAKEN, reply_markup=await calendar_markup(p.employee_id, day.year, day.month)
+            )
+        await call.answer()
+        return
+    except booking_service.NotFoundError:
+        await state.clear()
+        await call.answer(texts.AI_PROPOSAL_EXPIRED, show_alert=True)
+        return
+    except Exception:  # noqa: BLE001 — клиенту нужен внятный ответ, а не молчание
+        logger.exception("Не удалось создать запись из карточки ИИ")
+        await state.clear()
+        await call.message.edit_text(texts.BOOKING_FAILED)
+        await call.answer()
+        return
+
+    await state.clear()
+    await call.message.edit_text(
+        texts.BOOKED.format(
+            employee=card["employee"],
+            service=card["service"],
+            date=texts.human_date(card["date"]),
+            start=card["start"],
+            end=card["end"],
         )
+    )
+    await call.answer()
+
+
+@router.callback_query(AiBookCB.filter(F.action == "other"))
+async def other_time(call: CallbackQuery, state: FSMContext) -> None:
+    p = await _proposal(call, state)
+    if p is None:
+        return
+    await state.clear()
+    await state.set_state(Booking.day)
+    await state.update_data(
+        service_id=p.service_id,
+        service_name=p.service,
+        employee_id=p.employee_id,
+        employee_name=p.employee,
+        source=SOURCE_AI,
+        notes=p.summary or None,
+    )
+    today, _ = services.horizon()
+    await call.message.edit_text(
+        texts.AI_OTHER_DAY.format(employee=p.employee, service=p.service),
+        reply_markup=await calendar_markup(p.employee_id, today.year, today.month),
+    )
+    await call.answer()

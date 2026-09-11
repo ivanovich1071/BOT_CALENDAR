@@ -207,7 +207,15 @@ def parse_slot(day: date, slot: str) -> datetime:
 
 
 def create(
-    db: Session, *, client_id: int, employee_id: int, service_id: int, day: date, slot: str
+    db: Session,
+    *,
+    client_id: int,
+    employee_id: int,
+    service_id: int,
+    day: date,
+    slot: str,
+    source: str = SOURCE_TELEGRAM,
+    notes: str | None = None,
 ) -> dict:
     """Создаёт запись. SlotTakenError пробрасывается — хендлер попросит выбрать другое время."""
     booking, _google = booking_flow.create(
@@ -216,7 +224,8 @@ def create(
         employee_id=employee_id,
         service_id=service_id,
         start_at=parse_slot(day, slot),
-        source=SOURCE_TELEGRAM,
+        source=source,
+        notes=notes,
         actor=f"tg:{client_id}",
     )
     return _card(booking)

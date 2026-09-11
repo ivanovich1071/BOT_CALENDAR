@@ -130,6 +130,24 @@ def demo_reset(yes: bool) -> None:
         db.close()
 
 
+def ai_model(model: str | None) -> None:
+    """Показать или сменить модель ИИ-консультанта (пусто — берётся OPENROUTER_MODEL из .env)."""
+    from app.config.settings import get_settings
+    from app.services.app_settings_service import AI, get_setting, set_setting
+
+    db = SessionLocal()
+    try:
+        config = get_setting(db, AI)
+        if model is None:
+            print(f"Модель: {config.get('model') or get_settings().openrouter_model}")
+            return
+        set_setting(db, AI, {**config, "model": model.strip()})
+        log_action(db, actor="cli", action="settings.ai", entity_type="settings", details={"model": model.strip()})
+        print(f"Модель ИИ-консультанта: {model.strip() or get_settings().openrouter_model}")
+    finally:
+        db.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="app.cli", description="Утилиты проекта")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -145,6 +163,9 @@ def main() -> None:
     p_reset = sub.add_parser("demo-reset", help="Отменить и удалить тестовые записи")
     p_reset.add_argument("--yes", action="store_true", help="Не спрашивать подтверждение")
 
+    p_model = sub.add_parser("ai-model", help="Показать или сменить модель ИИ-консультанта")
+    p_model.add_argument("model", nargs="?")
+
     args = parser.parse_args()
     if args.cmd == "create-admin":
         create_admin()
@@ -154,6 +175,8 @@ def main() -> None:
         export_company(args.path)
     elif args.cmd == "demo-reset":
         demo_reset(args.yes)
+    elif args.cmd == "ai-model":
+        ai_model(args.model)
 
 
 if __name__ == "__main__":

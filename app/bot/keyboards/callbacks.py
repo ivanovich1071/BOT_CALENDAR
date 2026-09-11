@@ -35,3 +35,9 @@ class ConfirmCB(CallbackData, prefix="cfm"):
 class BookingCB(CallbackData, prefix="bk"):
     action: str  # reschedule | cancel | cancel_yes
     booking_id: int
+
+
+class AiBookCB(CallbackData, prefix="aib"):
+    """Карточка, предложенная ИИ: сама запись — в состоянии диалога, не в кнопке."""
+
+    action: str  # yes | other
