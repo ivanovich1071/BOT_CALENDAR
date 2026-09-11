@@ -34,7 +34,7 @@ def test_шаблон_вайбмайнд_проходит_проверку():
     pack = _pack()
     assert pack["company"]["name"] == "ВайбМайнд"
     assert len(pack["services"]) == 4
-    assert [e["name"] for e in pack["employees"]] == ["Вероника Николаевна", "Наталья Александровна", "Евгений"]
+    assert [e["name"] for e in pack["employees"]] == ["Вероника Николаевна", "Наталия Сергеевна", "Евгений"]
     assert len(pack["knowledge"]) >= 10
 
 

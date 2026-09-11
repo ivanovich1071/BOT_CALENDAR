@@ -222,7 +222,8 @@ ssh -t -i ~/.ssh/bot_calendar_deploy root@138.124.63.48 "cd /opt/bot-calendar &&
 
 **5. Наполнить админку** на `https://calendar.138-124-63-48.nip.io/admin`:
 сотрудник → услуга → расписание → «Календари» → «Подключить Google» → рабочий
-календарь. Порядок — в [docs/ADMIN.md](docs/ADMIN.md).
+календарь. Порядок — в [docs/ADMIN.md](docs/ADMIN.md), пошагово для сотрудников
+и администратора — в [docs/ADMIN_USER_GUIDE.md](docs/ADMIN_USER_GUIDE.md).
 
 **6. Проверить в боте:** запись кнопками; фраза «хочу на консультацию завтра
 после обеда»; «Мои записи» → перенос и отмена. Событие должно появляться и
@@ -291,7 +292,8 @@ Telegram: сессия подменяется записывающей загл�
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | Что сделано, что дальше, журнал изменений |
 | [docs/INSTALL.md](docs/INSTALL.md) | Установка с нуля: локально и на сервер через Docker |
-| [docs/ADMIN.md](docs/ADMIN.md) | Руководство администратора: ежедневная работа, напоминания |
+| [docs/ADMIN_USER_GUIDE.md](docs/ADMIN_USER_GUIDE.md) | Инструкция пользователя панели: пошагово для сотрудника и администратора |
+| [docs/ADMIN.md](docs/ADMIN.md) | Справочник администратора: все разделы и поля панели |
 | [docs/BOT.md](docs/BOT.md) | Что видит клиент: кнопки, фразы, напоминания |
 | [docs/GOOGLE_SETUP.md](docs/GOOGLE_SETUP.md) | Google Cloud: OAuth Client ID |
 | [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Создание бота в @BotFather |
