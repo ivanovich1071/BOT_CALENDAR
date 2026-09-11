@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+{# 1 минута на шкале — 1.2 px: получасовая запись высотой 36 px #}
+{% set ppm = 1.2 %}
+{% set colors = {
+  "booked": "border-emerald-500 bg-emerald-50",
+  "completed": "border-sky-500 bg-sky-50",
+  "no_show": "border-amber-500 bg-amber-50",
+  "cancelled": "border-rose-300 bg-rose-50 text-slate-400"
+} %}
+{% set icons = {"ai": "🤖", "telegram": "✈️", "admin": "🖥"} %}
+
+<div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+  <h1 class="text-2xl font-bold">Календарь</h1>
+  <div class="inline-flex rounded-lg border border-slate-300 bg-white overflow-hidden text-sm">
+    {% for key, label in views.items() %}
+    <a href="{{ link(view=key, employee_id=(chosen.id if chosen and key in ('week', 'month') else 0)) }}"
+       class="px-3 py-1.5 {{ 'bg-slate-900 text-white' if key == view else 'hover:bg-slate-50' }} {{ 'border-l border-slate-300' if not loop.first }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% include "calendar/_google_panel.html" %}
+
+<form method="get" action="/admin/calendar" class="bg-white rounded-xl shadow p-3 mb-4 flex flex-wrap items-center gap-3 text-sm">
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="inline-flex items-center gap-1">
+    <a href="{{ prev_link }}" class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50" title="Назад">‹</a>
+    <a href="{{ today_link }}" class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50">Сегодня</a>
+    <a href="{{ next_link }}" class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50" title="Вперёд">›</a>
+  </div>
+  <input type="date" name="date" value="{{ day.isoformat() }}" onchange="this.form.submit()"
+         class="border border-slate-300 rounded-lg px-2 py-1.5">
+  {% if employees|length > 1 %}
+  <select name="employee_id" onchange="this.form.submit()" class="border border-slate-300 rounded-lg px-2 py-1.5">
+    {% if view != 'week' %}<option value="0">Все сотрудники</option>{% endif %}
+    {% for e in employees %}<option value="{{ e.id }}" {{ 'selected' if chosen and chosen.id == e.id }}>{{ e.name }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  {% if view != 'month' %}
+  <label class="flex items-center gap-1.5 text-slate-600">
+    <input type="checkbox" name="cancelled" value="1" {{ 'checked' if show_cancelled }} onchange="this.form.submit()" class="rounded"> Отменённые
+  </label>
+  {% endif %}
+  <span class="ml-auto font-semibold text-base">{{ title }}</span>
+</form>
+
+{% if not employees %}
+<div class="bg-white rounded-xl shadow p-6 text-slate-500 text-sm">
+  Показать нечего: нет действующих сотрудников{% if not user.has_permission('view_all') %} или ваш логин не привязан к сотруднику — попросите администратора{% endif %}.
+</div>
+{% elif view in ('day', 'week') %}
+  {% include "calendar/_grid.html" %}
+{% elif view == 'week_all' %}
+  {% include "calendar/_week_all.html" %}
+{% else %}
+  {% include "calendar/_month.html" %}
+{% endif %}
+
+<div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 text-xs text-slate-500">
+  {% for st, label in status_labels.items() %}
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm border-l-4 {{ colors[st] }}"></span>{{ label }}</span>
+  {% endfor %}
+  {% if view in ('day', 'week') %}
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-slate-100 border border-slate-200"></span>Нерабочее время</span>
+  {% if google_on %}
+  <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm border border-slate-300" style="background: repeating-linear-gradient(135deg,#cbd5e1 0 3px,#f8fafc 3px 6px)"></span>Занято в Google (не запись)</span>
+  {% endif %}
+  {% if can_create %}<span>Клик по пустому времени — новая запись</span>{% endif %}
+  {% endif %}
+  <span>🤖 ИИ · ✈️ бот · 🖥 админка</span>
+</div>
+{% endblock %}

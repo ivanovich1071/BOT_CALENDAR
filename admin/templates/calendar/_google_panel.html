@@ -1,0 +1,21 @@
+{% set connected = google_calendars|length %}
+<div class="mb-4 px-4 py-2.5 rounded-xl text-sm flex flex-wrap items-center gap-x-4 gap-y-2 {{ 'bg-sky-50 border border-sky-200' if google_on else 'bg-slate-50 border border-slate-200' }}">
+  {% if google_on %}
+  <span><span class="text-emerald-600">●</span> <b>Google Calendar включён</b> — записи пишутся и в рабочие календари сотрудников
+    (календарь есть у {{ connected }} из {{ employees|length }}).</span>
+  {% else %}
+  <span><span class="text-slate-400">●</span> <b>Google Calendar выключен</b> — записи живут в админке и боте.</span>
+  {% endif %}
+  <span class="ml-auto flex items-center gap-3">
+    <a href="/admin/calendars" class="text-sky-700 hover:underline">Подключения</a>
+    {% if user.has_permission('manage_settings') %}
+    <form method="post" action="/admin/settings/google" class="inline"
+          {% if google_on %}onsubmit="return confirm('Выключить Google Calendar? Новые записи не попадут в Google, пока не включите снова.')"{% endif %}>
+      <input type="hidden" name="enabled" value="{{ '0' if google_on else '1' }}">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button class="px-3 py-1 rounded-lg {{ 'border border-slate-300 bg-white hover:bg-slate-50' if google_on else 'bg-slate-900 text-white hover:bg-slate-700' }}">
+        {{ 'Выключить' if google_on else 'Включить и выгрузить записи' }}</button>
+    </form>
+    {% endif %}
+  </span>
+</div>

@@ -6,6 +6,14 @@
   учитывают занятость его рабочего календаря, а подтверждённые записи создают в нём события.
 </p>
 
+{% if google_ready and not google_on %}
+<div class="mb-6 px-4 py-3 rounded-lg bg-slate-50 text-slate-700 border border-slate-300 text-sm">
+  Google Calendar сейчас выключен: подключения ниже сохранены, но события не пишутся и занятость
+  не учитывается. Включить — в <a href="/admin/settings" class="text-sky-600 hover:underline">«Настройках»</a>
+  или на странице <a href="/admin/calendar" class="text-sky-600 hover:underline">«Календарь»</a>.
+</div>
+{% endif %}
+
 {% if not google_ready %}
 <div class="mb-6 px-4 py-3 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 text-sm">
   Google OAuth не настроен: заполните GOOGLE_CLIENT_ID и GOOGLE_CLIENT_SECRET в .env

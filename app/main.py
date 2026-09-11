@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from admin.routes import (
     audit,
     bookings,
+    calendar_view,
     calendars,
     clients,
     company,
@@ -57,6 +58,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(google_oauth.router)
 app.include_router(dashboard.router)
+app.include_router(calendar_view.router)
 app.include_router(bookings.router)
 app.include_router(schedule.router)
 app.include_router(calendars.router)

@@ -30,6 +30,19 @@ def can_touch(db: Session, user: User, employee_id: int | None) -> bool:
     return own is None or (own != 0 and own == employee_id)
 
 
+def visible_employees(db: Session, user: User) -> list[Employee]:
+    """Действующие сотрудники, с которыми пользователю можно работать."""
+    q = (
+        select(Employee)
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        q = q.where(Employee.id == own)
+    return list(db.scalars(q).all())
+
+
 def own_clients_clause(own: int):
     """Клиенты, которые хоть раз записывались к сотруднику own."""
     return Client.id.in_(select(Booking.client_id).where(Booking.employee_id == own))

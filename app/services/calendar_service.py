@@ -6,6 +6,8 @@
   связь — booking.google_event_id (+ extendedProperties.private.booking_id).
 - Любая ошибка Google не ломает бронирование: свободный слот проверяется в БД,
   проблемы записи в Google фиксируются в audit-логе.
+- Google можно выключить в админке: подключения остаются, но занятость не
+  спрашивается, события не пишутся, а удаления копятся до включения (reconcile).
 """
 
 import logging
@@ -25,6 +27,7 @@ from app.models.calendar import Calendar
 from app.models.employee import Employee
 from app.models.enums import BOOKED, CANCELLED
 from app.models.google_account import GoogleAccount
+from app.services.app_settings_service import GOOGLE_PENDING, GOOGLE_SYNC, get_setting, set_setting
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,11 @@ TOKEN_REFRESH_MARGIN = timedelta(seconds=30)
 
 class GoogleNotConfigured(Exception):
     pass
+
+
+def google_enabled(db: Session) -> bool:
+    """Выключатель в админке: подключения хранятся, но Google не спрашиваем и не пишем."""
+    return bool(get_setting(db, GOOGLE_SYNC).get("enabled", True))
 
 
 def _require_client() -> None:
@@ -188,6 +196,8 @@ def get_busy_intervals(
     к одному не должна закрывать это время у остальных.
     """
     busy: list[tuple[datetime, datetime]] = []
+    if not google_enabled(db):
+        return busy
     calendar = default_calendar(db, employee_id)
     if calendar is None:
         return busy
@@ -235,6 +245,8 @@ def _event_body(booking: Booking, tz: str) -> dict:
 
 def push_booking(db: Session, booking: Booking) -> str | None:
     """Создаёт событие в Google и возвращает google_event_id (или None, если нечего)."""
+    if not google_enabled(db):
+        return None  # событие заведёт reconcile при включении
     calendar = _calendar_for(db, booking)
     if calendar is None:
         return None
@@ -259,7 +271,7 @@ def push_booking(db: Session, booking: Booking) -> str | None:
 
 def push_reschedule(db: Session, booking: Booking) -> bool:
     """Двигает существующее событие. Новое НЕ создаёт — дубля в календаре не будет."""
-    if not booking.google_event_id:
+    if not booking.google_event_id or not google_enabled(db):
         return False
     calendar = _calendar_for(db, booking)
     if calendar is None:
@@ -277,8 +289,24 @@ def push_reschedule(db: Session, booking: Booking) -> bool:
     return True
 
 
+def _defer_delete(db: Session, booking: Booking) -> None:
+    """Google выключен — событие удалим при включении, иначе в календаре останется отменённое."""
+    calendar = _calendar_for(db, booking)
+    if calendar is None:
+        return
+    deletes = [
+        d for d in get_setting(db, GOOGLE_PENDING).get("deletes") or []
+        if d.get("event_id") != booking.google_event_id
+    ]
+    deletes.append({"calendar_id": calendar.id, "event_id": booking.google_event_id, "booking_id": booking.id})
+    set_setting(db, GOOGLE_PENDING, {"deletes": deletes})
+
+
 def push_cancel(db: Session, booking: Booking) -> bool:
     if not booking.google_event_id:
+        return False
+    if not google_enabled(db):
+        _defer_delete(db, booking)
         return False
     calendar = _calendar_for(db, booking)
     if calendar is None:
@@ -296,6 +324,81 @@ def push_cancel(db: Session, booking: Booking) -> bool:
         if e.resp.status not in (404, 410):  # событие уже удалено — не ошибка
             raise
     return True
+
+
+# ==== Включение после паузы ====
+
+def _delete_pending(db: Session, item: dict) -> bool:
+    """True — событие удалено или его уже нет; False — повторить при следующей сверке."""
+    calendar = db.get(Calendar, item.get("calendar_id") or 0)
+    if calendar is None:
+        return True  # календарь отключили — удалять не из чего
+    creds = _credentials_for(db, db.get(GoogleAccount, calendar.google_account_id))
+    if creds is None:
+        return False
+    try:
+        calendar_api.build_service(creds).events().delete(
+            calendarId=calendar.google_calendar_id, eventId=item["event_id"]
+        ).execute()
+    except HttpError as e:
+        if e.resp.status not in (404, 410):
+            raise
+    return True
+
+
+def reconcile(db: Session) -> dict[str, int]:
+    """Догоняет Google после выключения: удаляет отложенное, создаёт и правит события будущих записей.
+
+    Вызывается при включении — до входящей синхронизации, чтобы правки, сделанные
+    в админке за время паузы, не перетёрлись старыми событиями.
+    """
+    from app.services.audit_service import log_action
+
+    result = {"created": 0, "updated": 0, "deleted": 0, "failed": 0}
+    left = []
+    for item in get_setting(db, GOOGLE_PENDING).get("deletes") or []:
+        try:
+            done = _delete_pending(db, item)
+        except Exception:  # noqa: BLE001
+            logger.exception("Отложенное удаление события %s не удалось", item.get("event_id"))
+            done = False
+        if done:
+            result["deleted"] += 1
+        else:
+            left.append(item)
+            result["failed"] += 1
+    set_setting(db, GOOGLE_PENDING, {"deletes": left})
+
+    upcoming = db.scalars(
+        select(Booking)
+        .where(Booking.status == BOOKED, Booking.end_at > datetime.now(timezone.utc))
+        .order_by(Booking.start_at)
+    ).all()
+    for booking in upcoming:
+        try:
+            if booking.google_event_id:
+                try:
+                    if push_reschedule(db, booking):
+                        result["updated"] += 1
+                    continue
+                except HttpError as e:
+                    if e.resp.status not in (404, 410):
+                        raise
+                    # Событие удалили в Google руками — заводим заново
+                    booking.google_event_id = None
+                    booking.calendar_id = None
+                    db.commit()
+            if push_booking(db, booking):
+                result["created"] += 1
+        except Exception:  # noqa: BLE001 — одна запись не останавливает остальные
+            db.rollback()
+            logger.exception("Сверка с Google не удалась для записи #%s", booking.id)
+            result["failed"] += 1
+            log_action(
+                db, actor="system", action="google.push_failed", entity_type="booking",
+                entity_id=booking.id, details={"operation": "reconcile"},
+            )
+    return result
 
 
 # ==== Синхронизация Google → БД (инкрементальная) ====
@@ -395,6 +498,8 @@ def sync_account_changes(db: Session, account: GoogleAccount) -> int:
 
 def sync_all_accounts(db: Session) -> int:
     """Прогон синхронизации по всем аккаунтам (вызывается планировщиком)."""
+    if not google_enabled(db):
+        return 0
     total = 0
     for account in db.scalars(select(GoogleAccount)).all():
         try:

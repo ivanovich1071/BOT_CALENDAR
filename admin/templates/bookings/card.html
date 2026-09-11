@@ -11,12 +11,17 @@
       создана {{ booking.created_at|localdt }}{% if booking.updated_at %} · изменена {{ booking.updated_at|localdt }}{% endif %}
     </div>
   </div>
-  <a href="/admin/bookings?date={{ date }}" class="text-sky-600 hover:underline text-sm">← К записям дня</a>
+  {% if back and back.startswith('/admin/calendar') %}
+  <a href="{{ back }}" class="text-sky-600 hover:underline text-sm">← В календарь</a>
+  {% else %}
+  <a href="{{ back or '/admin/bookings?date=' ~ date }}" class="text-sky-600 hover:underline text-sm">← К записям дня</a>
+  {% endif %}
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="lg:col-span-2 space-y-6">
     <form method="post" action="/admin/bookings/{{ booking.id }}/update" class="bg-white rounded-xl shadow p-6 space-y-4 text-sm">
+      <input type="hidden" name="back" value="{{ back or '' }}">
       <h2 class="font-semibold">Данные записи</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="block"><span class="text-slate-600">Клиент</span>
@@ -77,7 +82,7 @@
         <div class="text-emerald-700">● Событие есть</div>
         <div class="text-xs text-slate-500 break-all">{{ booking.google_event_id }}</div>
       {% else %}
-        <div class="text-slate-500">● События нет{% if booking.status == 'booked' %} — календарь не подключён или запись не дошла до Google{% endif %}</div>
+        <div class="text-slate-500">● События нет{% if booking.status == 'booked' %} — Google выключен, календарь не подключён или запись не дошла до Google{% endif %}</div>
       {% endif %}
     </div>
 
@@ -88,6 +93,7 @@
       <form method="post" action="/admin/bookings/{{ booking.id }}/status"
             {% if st == 'cancelled' %}onsubmit="return confirm('Отменить запись #{{ booking.id }}? Событие уйдёт из Google Calendar.')"{% endif %}>
         <input type="hidden" name="status" value="{{ st }}">
+        <input type="hidden" name="back" value="{{ back or '' }}">
         <button class="w-full text-left border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">→ {{ label }}</button>
       </form>
       {% endfor %}
@@ -97,6 +103,7 @@
     {% if can_delete %}
     <form method="post" action="/admin/bookings/{{ booking.id }}/delete" class="bg-white rounded-xl shadow p-5 text-sm space-y-2"
           onsubmit="return confirm('Удалить запись #{{ booking.id }} навсегда? Активная запись сначала отменится в Google Calendar.')">
+      <input type="hidden" name="back" value="{{ back or '' }}">
       <h2 class="font-semibold">Удаление</h2>
       <p class="text-xs text-slate-500">Запись исчезнет из системы. В журнале останется отметка об удалении.</p>
       <button class="text-rose-600 hover:underline">Удалить запись</button>

@@ -1,0 +1,30 @@
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <div class="grid grid-cols-7 bg-slate-50 text-xs text-slate-500 border-b border-slate-200">
+    {% for w in weekday_short %}<div class="px-2 py-2 text-center font-semibold">{{ w }}</div>{% endfor %}
+  </div>
+  {% for week in weeks %}
+  <div class="grid grid-cols-7 border-b border-slate-200 last:border-b-0">
+    {% for cell in week %}
+    {% set done = cell.counts.get('completed', 0) %}
+    {% set no_show = cell.counts.get('no_show', 0) %}
+    {% set cancelled_count = cell.counts.get('cancelled', 0) %}
+    <a href="{{ link(view='day', date=cell.day.isoformat()) }}"
+       class="block min-h-[92px] p-2 border-l border-slate-200 first:border-l-0 hover:bg-sky-50 {{ 'bg-slate-50 text-slate-400' if not cell.in_month }}">
+      {% if cell.day == today_date %}
+      <span class="inline-flex w-7 h-7 items-center justify-center rounded-full bg-slate-900 text-white text-sm">{{ cell.day.day }}</span>
+      {% else %}
+      <span class="text-sm font-medium">{{ cell.day.day }}</span>
+      {% endif %}
+      {% if cell.active %}
+      <div class="mt-1 text-xs font-medium text-emerald-700">{{ cell.active|plural('запись', 'записи', 'записей') }}</div>
+      {% endif %}
+      <div class="text-[11px] text-slate-500 flex flex-wrap gap-x-2">
+        {% if done %}<span>завершено {{ done }}</span>{% endif %}
+        {% if no_show %}<span>неявка {{ no_show }}</span>{% endif %}
+        {% if cancelled_count %}<span class="text-rose-400">отмена {{ cancelled_count }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>

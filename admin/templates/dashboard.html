@@ -13,7 +13,12 @@
 <div class="bg-white rounded-xl shadow p-6">
   <div class="flex items-center justify-between mb-4">
     <h2 class="font-semibold">Записи на сегодня</h2>
-    <a href="/admin/bookings/new" class="text-sm bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700">+ Новая запись</a>
+    <div class="flex items-center gap-2">
+      {% if user.has_permission('view_calendar') %}
+      <a href="/admin/calendar" class="text-sm border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">Открыть календарь</a>
+      {% endif %}
+      <a href="/admin/bookings/new" class="text-sm bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700">+ Новая запись</a>
+    </div>
   </div>
   {% if not today_bookings %}
     <p class="text-slate-500 text-sm">На сегодня записей нет.</p>

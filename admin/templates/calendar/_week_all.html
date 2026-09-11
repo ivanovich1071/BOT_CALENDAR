@@ -1,0 +1,38 @@
+<div class="bg-white rounded-xl shadow overflow-x-auto">
+  <table class="w-full text-xs border-collapse min-w-[960px]">
+    <thead>
+      <tr class="bg-slate-50 text-slate-600">
+        <th class="text-left px-3 py-2 w-40 border-b border-slate-200">Сотрудник</th>
+        {% for d in days %}
+        <th class="px-2 py-2 border-b border-l border-slate-200 font-semibold {{ 'bg-sky-50' if d == today_date }}">
+          <a href="{{ link(view='day', date=d.isoformat(), employee_id=0) }}" class="hover:underline">{{ weekday_short[d.weekday()] }}, {{ d.strftime('%d.%m') }}</a>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for employee, cells in rows %}
+      <tr class="align-top">
+        <td class="px-3 py-2 border-b border-slate-200">
+          <a href="{{ link(view='week', employee_id=employee.id) }}" class="font-medium text-sm hover:underline">{{ employee.name }}</a>
+          <div class="text-slate-500 truncate">{{ employee.specialization or '' }}</div>
+        </td>
+        {% for cell in cells %}
+        <td class="px-1.5 py-1.5 border-b border-l border-slate-200 {{ 'bg-slate-50' if cell.day_off }}">
+          {% if cell.day_off and not cell.bookings %}<div class="text-slate-400 text-center py-1">{{ cell.day_off }}</div>{% endif %}
+          {% for bk in cell.bookings %}
+          {% set client_name = bk.client.name or bk.client.telegram_username or ('Клиент #' ~ bk.client_id) %}
+          <a href="/admin/bookings/{{ bk.id }}?back={{ back|urlencode }}"
+             class="block mb-1 last:mb-0 rounded border-l-4 px-1.5 py-0.5 hover:shadow {{ colors.get(bk.status, '') }}"
+             title="{{ bk.start_at|localtime }}–{{ bk.end_at|localtime }} · {{ client_name }} · {{ bk.service.name }} · {{ status_labels.get(bk.status, bk.status) }}">
+            <span class="font-semibold">{{ bk.start_at|localtime }}</span> {{ icons.get(bk.source, '') }} {{ client_name }}
+            <div class="truncate text-slate-500">{{ bk.service.name }}</div>
+          </a>
+          {% endfor %}
+        </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

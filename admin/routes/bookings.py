@@ -1,19 +1,19 @@
 from datetime import datetime, time, timedelta
+from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from admin.flash import redirect
-from admin.scope import FOREIGN, can_touch, forbidden, own_clients_clause, own_employee_id
+from admin.flash import redirect, safe_back
+from admin.scope import FOREIGN, can_touch, forbidden, own_clients_clause, own_employee_id, visible_employees
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
 from app.db.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.booking import Booking
 from app.models.client import Client
-from app.models.employee import Employee
 from app.models.enums import BOOKING_STATUS_LABELS_RU, BOOKING_STATUSES, SOURCE_ADMIN
 from app.models.service import Service
 from app.services import booking_flow, booking_service
@@ -36,17 +36,8 @@ def _created_message(google) -> str:
     return "Запись создана"
 
 
-def _employees_for(db: Session, user) -> list[Employee]:
-    """Действующие сотрудники, с которыми пользователю можно работать."""
-    q = (
-        select(Employee)
-        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
-        .order_by(Employee.name)
-    )
-    own = own_employee_id(db, user)
-    if own is not None:
-        q = q.where(Employee.id == own)
-    return db.scalars(q).all()
+def _day_list(booking: Booking) -> str:
+    return f"/admin/bookings?date={booking.start_at.astimezone(local_tz()).date().isoformat()}"
 
 
 @router.get("")
@@ -89,7 +80,7 @@ async def list_bookings(
             "user": user,
             "nav": "bookings",
             "items": bookings,
-            "employees": _employees_for(db, user),
+            "employees": visible_employees(db, user),
             "statuses": BOOKING_STATUSES,
             "status_labels": BOOKING_STATUS_LABELS_RU,
             "day": day.isoformat(),
@@ -105,10 +96,13 @@ async def new_booking(
     request: Request,
     employee_id: int = 0,
     service_id: int = 0,
+    date: str = "",
+    slot: str = "",
+    back: str = "",
     user=Depends(require_permission("create_booking")),
     db: Session = Depends(get_db),
 ):
-    employees = _employees_for(db, user)
+    employees = visible_employees(db, user)
     services = db.scalars(
         select(Service)
         .where(Service.is_active.is_(True), Service.archived_at.is_(None))
@@ -119,6 +113,7 @@ async def new_booking(
     if own is not None:
         clients_q = clients_q.where(own_clients_clause(own))
     clients = db.scalars(clients_q).all()
+    day = _parse_date(date)
     return render(
         request,
         "bookings/form.html",
@@ -130,6 +125,10 @@ async def new_booking(
             "clients": clients,
             "f_employee": employee_id or (employees[0].id if employees else 0),
             "f_service": service_id or (services[0].id if services else 0),
+            # Из календаря приходят день и время ячейки — форма сразу показывает слоты
+            "f_date": day.isoformat() if day else "",
+            "f_slot": slot.strip()[:5],
+            "back": safe_back(back),
             "statuses": BOOKING_STATUS_LABELS_RU,
             "page_title": "Новая запись",
         },
@@ -143,6 +142,7 @@ async def slots(
     service_id: int = 0,
     date: str = "",
     exclude_booking_id: int = 0,
+    selected: str = "",
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -162,7 +162,17 @@ async def slots(
         )
     except Exception:  # noqa: BLE001
         return render(request, "bookings/_slots.html", {"slots": [], "error": "Ошибка расчёта слотов"})
-    return render(request, "bookings/_slots.html", {"slots": slot_list})
+    selected = selected.strip()[:5]
+    return render(
+        request,
+        "bookings/_slots.html",
+        {
+            "slots": slot_list,
+            "selected": selected,
+            # Время из ячейки календаря может не подойти услуге: длинная не влезет до перерыва
+            "selected_missing": bool(selected) and selected not in {s.strftime("%H:%M") for s in slot_list},
+        },
+    )
 
 
 @router.post("/create")
@@ -178,16 +188,25 @@ async def create_booking_post(
     day = _parse_date(form.get("date") or "")
     slot = (form.get("slot") or "").strip()
     notes = (form.get("notes") or "").strip() or None
-    back = f"/admin/bookings/new?employee_id={employee_id}&service_id={service_id}"
+    back = safe_back(form.get("back"))
+    retry = "/admin/bookings/new?" + urlencode(
+        {
+            "employee_id": employee_id,
+            "service_id": service_id,
+            "date": day.isoformat() if day else "",
+            "slot": slot,
+            "back": back or "",
+        }
+    )
 
     if not (employee_id and service_id and day and slot):
-        return redirect(back, err="Заполните все поля")
+        return redirect(retry, err="Заполните все поля")
     if not can_touch(db, user, employee_id):
-        return redirect(back, err=FOREIGN)
+        return redirect(retry, err=FOREIGN)
     if not client_id:
         name = (form.get("client_name") or "").strip()
         if not name:
-            return redirect(back, err="Выберите клиента или укажите имя нового")
+            return redirect(retry, err="Выберите клиента или укажите имя нового")
         client = Client(name=name, phone=(form.get("client_phone") or "").strip() or None)
         db.add(client)
         db.commit()
@@ -210,19 +229,20 @@ async def create_booking_post(
             user_id=user.id,
         )
     except booking_service.SlotTakenError:
-        return redirect(back, err="Слот уже занят")
+        return redirect(retry, err="Слот уже занят")
     except booking_service.NotFoundError as e:
-        return redirect(back, err=str(e))
+        return redirect(retry, err=str(e))
     except ValueError:
-        return redirect(back, err="Неверное время")
+        return redirect(retry, err="Неверное время")
 
-    return redirect(f"/admin/bookings?date={day.isoformat()}", ok=_created_message(google))
+    return redirect(back or f"/admin/bookings?date={day.isoformat()}", ok=_created_message(google))
 
 
 @router.get("/{booking_id}/reschedule")
 async def reschedule_form(
     booking_id: int,
     request: Request,
+    back: str = "",
     user=Depends(require_permission("edit_booking")),
     db: Session = Depends(get_db),
 ):
@@ -238,6 +258,7 @@ async def reschedule_form(
             "user": user,
             "nav": "bookings",
             "booking": booking,
+            "back": safe_back(back),
             "page_title": f"Перенос записи #{booking.id}",
         },
     )
@@ -253,13 +274,15 @@ async def reschedule_post(
     booking = db.get(Booking, booking_id)
     if booking is None:
         return redirect("/admin/bookings", err="Запись не найдена")
-    if not can_touch(db, user, booking.employee_id):
-        return redirect("/admin/bookings", err=FOREIGN)
     form = await request.form()
+    back = safe_back(form.get("back"))
+    if not can_touch(db, user, booking.employee_id):
+        return redirect(back or "/admin/bookings", err=FOREIGN)
+    retry = f"/admin/bookings/{booking_id}/reschedule" + (f"?back={quote(back)}" if back else "")
     day = _parse_date(form.get("date") or "")
     slot = (form.get("slot") or "").strip()
     if not day or not slot:
-        return redirect(f"/admin/bookings/{booking_id}/reschedule", err="Укажите дату и время")
+        return redirect(retry, err="Укажите дату и время")
     try:
         hh, mm = slot.split(":")
         start_local = datetime.combine(day, datetime.min.time(), tzinfo=local_tz()).replace(
@@ -269,18 +292,18 @@ async def reschedule_post(
             db, booking_id, new_start=start_local, actor=user.login, user_id=user.id
         )
     except booking_service.SlotTakenError:
-        return redirect(f"/admin/bookings/{booking_id}/reschedule", err="Слот уже занят")
+        return redirect(retry, err="Слот уже занят")
     except booking_service.NotFoundError:
-        return redirect("/admin/bookings", err="Активная запись не найдена")
+        return redirect(back or "/admin/bookings", err="Активная запись не найдена")
     except ValueError:
-        return redirect(f"/admin/bookings/{booking_id}/reschedule", err="Неверное время")
+        return redirect(retry, err="Неверное время")
 
     message = (
         "Запись перенесена, но событие в Google Calendar осталось на прежнем месте"
         if google is False
         else "Запись перенесена"
     )
-    return redirect(f"/admin/bookings?date={day.isoformat()}", ok=message)
+    return redirect(back or f"/admin/bookings?date={day.isoformat()}", ok=message)
 
 
 @router.post("/{booking_id}/status")
@@ -291,24 +314,24 @@ async def change_status(
     db: Session = Depends(get_db),
 ):
     form = await request.form()
+    back = safe_back(form.get("back"))
     status = form.get("status") or ""
     if status not in BOOKING_STATUSES:
-        return redirect("/admin/bookings", err="Неверный статус")
+        return redirect(back or "/admin/bookings", err="Неверный статус")
     current = db.get(Booking, booking_id)
     if current is None:
-        return redirect("/admin/bookings", err="Запись не найдена")
+        return redirect(back or "/admin/bookings", err="Запись не найдена")
     if not can_touch(db, user, current.employee_id):
-        return redirect("/admin/bookings", err=FOREIGN)
+        return redirect(back or "/admin/bookings", err=FOREIGN)
     try:
         booking, google = booking_flow.set_status(
             db, booking_id, status, actor=user.login, user_id=user.id
         )
     except booking_service.NotFoundError:
-        return redirect("/admin/bookings", err="Запись не найдена")
+        return redirect(back or "/admin/bookings", err="Запись не найдена")
     except booking_service.SlotTakenError:
-        return redirect("/admin/bookings", err="Вернуть нельзя: это время уже занято")
+        return redirect(back or "/admin/bookings", err="Вернуть нельзя: это время уже занято")
 
-    back = f"/admin/bookings?date={booking.start_at.astimezone(local_tz()).date().isoformat()}"
     if google is False:
         message = (
             "Запись возвращена, но событие в Google Calendar не создано"
@@ -317,7 +340,7 @@ async def change_status(
         )
     else:
         message = "Запись возвращена" if status == "booked" else "Статус обновлён"
-    return redirect(back, ok=message)
+    return redirect(back or _day_list(booking), ok=message)
 
 
 # ==== Карточка записи: правка всех полей и удаление ====
@@ -326,6 +349,7 @@ async def change_status(
 async def booking_card(
     booking_id: int,
     request: Request,
+    back: str = "",
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -338,7 +362,7 @@ async def booking_card(
         return forbidden(request, user)
 
     # В выпадающих списках — доступные плюс текущие значения записи, даже если они в архиве
-    employees = _employees_for(db, user)
+    employees = visible_employees(db, user)
     if booking.employee not in employees:
         employees = [booking.employee, *employees]
     services = db.scalars(
@@ -373,6 +397,7 @@ async def booking_card(
             "history": history,
             "date": start_local.date().isoformat(),
             "time": start_local.strftime("%H:%M"),
+            "back": safe_back(back),
             "status_labels": BOOKING_STATUS_LABELS_RU,
             "can_edit": user.has_permission("edit_booking"),
             "can_delete": user.has_permission("delete_booking"),
@@ -389,10 +414,11 @@ async def update_booking_post(
     db: Session = Depends(get_db),
 ):
     form = await request.form()
-    back = f"/admin/bookings/{booking_id}"
+    back = safe_back(form.get("back"))
+    card = f"/admin/bookings/{booking_id}" + (f"?back={quote(back)}" if back else "")
     current = db.get(Booking, booking_id)
     if current is None:
-        return redirect("/admin/bookings", err="Запись не найдена")
+        return redirect(back or "/admin/bookings", err="Запись не найдена")
     day = _parse_date(form.get("date") or "")
     try:
         employee_id = int(form.get("employee_id") or 0)
@@ -401,9 +427,9 @@ async def update_booking_post(
         hh, mm = str(form.get("time") or "").strip().split(":")
         start_local = datetime.combine(day, time(int(hh), int(mm)), tzinfo=local_tz())
     except (TypeError, ValueError):
-        return redirect(back, err="Укажите сотрудника, услугу, клиента, дату и время")
+        return redirect(card, err="Укажите сотрудника, услугу, клиента, дату и время")
     if not can_touch(db, user, current.employee_id) or not can_touch(db, user, employee_id):
-        return redirect(back, err=FOREIGN)
+        return redirect(card, err=FOREIGN)
     notes = str(form.get("notes") or "").strip() or None
     try:
         _booking, google = booking_flow.update(
@@ -418,27 +444,30 @@ async def update_booking_post(
             user_id=user.id,
         )
     except (booking_service.SlotTakenError, booking_service.NotFoundError, booking_service.BookingError) as exc:
-        return redirect(back, err=str(exc))
+        return redirect(card, err=str(exc))
     message = "Запись сохранена"
     if google is False:
         message += ", но Google Calendar не обновился — проверьте журнал"
-    return redirect(back, ok=message)
+    return redirect(card, ok=message)
 
 
 @router.post("/{booking_id}/delete")
 async def delete_booking_post(
     booking_id: int,
+    request: Request,
     user=Depends(require_permission("delete_booking")),
     db: Session = Depends(get_db),
 ):
+    form = await request.form()
+    back = safe_back(form.get("back"))
     booking = db.get(Booking, booking_id)
     if booking is None:
-        return redirect("/admin/bookings", err="Запись не найдена")
+        return redirect(back or "/admin/bookings", err="Запись не найдена")
     if not can_touch(db, user, booking.employee_id):
-        return redirect("/admin/bookings", err=FOREIGN)
-    day = booking.start_at.astimezone(local_tz()).date().isoformat()
+        return redirect(back or "/admin/bookings", err=FOREIGN)
+    day_list = _day_list(booking)
     google = booking_flow.delete(db, booking_id, actor=user.login, user_id=user.id)
     message = "Запись удалена"
     if google is False:
         message += ", но событие в Google Calendar не удалено — проверьте журнал"
-    return redirect(f"/admin/bookings?date={day}", ok=message)
+    return redirect(back or day_list, ok=message)

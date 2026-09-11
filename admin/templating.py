@@ -25,6 +25,21 @@ templates.env.filters["localdt"] = lambda dt: (
 )
 
 
+def plural(n: int, one: str, few: str, many: str) -> str:
+    """«1 запись», «3 записи», «5 записей»."""
+    n = int(n)
+    if n % 10 == 1 and n % 100 != 11:
+        word = one
+    elif 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        word = few
+    else:
+        word = many
+    return f"{n} {word}"
+
+
+templates.env.filters["plural"] = plural
+
+
 def render(request, name: str, context: dict | None = None, status_code: int = 200):
     ctx = {
         "request": request,

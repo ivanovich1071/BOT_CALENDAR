@@ -3,9 +3,12 @@
 {% elif slots %}
   <label class="block"><span class="text-slate-600">Свободное время *</span>
     <select name="slot" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
-      {% for s in slots %}<option value="{{ s.strftime('%H:%M') }}">{{ s.strftime("%H:%M") }}</option>{% endfor %}
+      {% for s in slots %}{% set hm = s.strftime('%H:%M') %}<option value="{{ hm }}" {{ 'selected' if hm == selected }}>{{ hm }}</option>{% endfor %}
     </select></label>
   <p class="text-xs text-slate-500 mt-1">Свободных слотов: {{ slots|length }}</p>
+  {% if selected_missing %}
+  <p class="text-xs text-amber-700 mt-1">С {{ selected }} эта услуга не помещается — выберите из свободного времени.</p>
+  {% endif %}
 {% else %}
   <p class="text-slate-500">Свободных слотов нет на выбранную дату.</p>
 {% endif %}

@@ -16,15 +16,16 @@
       {# Пункт виден, если есть хотя бы одно из прав; пустой список — всем #}
       {% set nav_items = [
         ("dashboard", "/admin/", "Панель", []),
+        ("calendar", "/admin/calendar", "Календарь", ["view_calendar"]),
         ("bookings", "/admin/bookings", "Записи", ["view_calendar"]),
         ("schedule", "/admin/schedule", "Расписание", ["manage_schedule", "view_calendar"]),
-        ("calendars", "/admin/calendars", "Календари", ["view_calendar"]),
         ("employees", "/admin/employees", "Сотрудники", ["manage_employees", "view_calendar"]),
         ("services", "/admin/services", "Услуги", ["manage_services", "create_booking"]),
         ("clients", "/admin/clients", "Клиенты", ["view_clients"]),
         ("dialogs", "/admin/dialogs", "Диалоги", ["view_clients"]),
         ("company", "/admin/company", "Компания", ["manage_settings"]),
         ("knowledge", "/admin/knowledge", "База знаний", ["manage_settings"]),
+        ("calendars", "/admin/calendars", "Подключения Google", ["view_calendar"]),
         ("users", "/admin/users", "Пользователи", ["manage_employees"]),
         ("settings", "/admin/settings", "Настройки", ["manage_settings"]),
         ("audit", "/admin/audit", "Аудит", ["view_audit"]),
@@ -41,7 +42,7 @@
       <form method="post" action="/logout"><button class="text-slate-300 hover:text-white underline">Выйти</button></form>
     </div>
   </aside>
-  <main class="flex-1 p-8 max-w-6xl">
+  <main class="flex-1 min-w-0 p-8 {{ '' if wide else 'max-w-6xl' }}">
     {% if flash_ok %}<div class="mb-4 px-4 py-3 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">{{ flash_ok }}</div>{% endif %}
     {% if flash_err %}<div class="mb-4 px-4 py-3 rounded-lg bg-rose-100 text-rose-800 border border-rose-300">{{ flash_err }}</div>{% endif %}
     {% block content %}{% endblock %}

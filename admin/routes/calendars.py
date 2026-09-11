@@ -77,6 +77,7 @@ async def calendars_page(
             "nav": "calendars",
             "items": items,
             "google_ready": google_ready,
+            "google_on": calendar_service.google_enabled(db),
             "can_manage": user.has_permission("manage_employees"),
             "page_title": "Google Календари",
         },

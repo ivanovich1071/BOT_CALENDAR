@@ -8,6 +8,7 @@
 </p>
 
 <form method="post" action="/admin/bookings/{{ booking.id }}/reschedule" class="bg-white rounded-xl shadow p-6 space-y-4 max-w-xl">
+  <input type="hidden" name="back" value="{{ back or '' }}">
   <label class="text-sm block w-48"><span class="text-slate-600">Новая дата *</span>
     <input type="date" name="date" required
            hx-get="/admin/bookings/slots?exclude_booking_id={{ booking.id }}"
@@ -19,7 +20,7 @@
   <div id="slots" class="text-sm"><p class="text-slate-500">Выберите дату — появятся свободные слоты.</p></div>
   <div class="flex gap-3">
     <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Перенести</button>
-    <a href="/admin/bookings" class="px-5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Отмена</a>
+    <a href="{{ back or '/admin/bookings' }}" class="px-5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Отмена</a>
   </div>
 </form>
 {% endblock %}

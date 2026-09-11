@@ -1,16 +1,27 @@
+import logging
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
-from admin.flash import redirect
+from admin.diff import changed_fields
+from admin.flash import redirect, safe_back
 from admin.templating import render
 from app.api.dependencies import require_permission
 from app.config.settings import get_settings
 from app.db.database import get_db
 from app.models.user import User
-from app.services import reminder_service
-from admin.diff import changed_fields
-from app.services.app_settings_service import BOOKING, GOOGLE_SYNC, REMINDERS, get_setting, set_setting
+from app.services import calendar_service, reminder_service
+from app.services.app_settings_service import (
+    BOOKING,
+    GOOGLE_PENDING,
+    GOOGLE_SYNC,
+    REMINDERS,
+    get_setting,
+    set_setting,
+)
 from app.services.audit_service import log_action
+
+logger = logging.getLogger(__name__)
 
 # (поле формы, ключ настройки, подпись, минимум, максимум)
 BOOKING_FIELDS = (
@@ -65,6 +76,8 @@ async def settings_page(
             "booking": get_setting(db, BOOKING),
             "booking_fields": BOOKING_FIELDS,
             "sync_minutes": get_setting(db, GOOGLE_SYNC).get("interval_minutes", 10),
+            "google_on": calendar_service.google_enabled(db),
+            "google_pending": len(get_setting(db, GOOGLE_PENDING).get("deletes") or []),
             "page_title": "Настройки",
         },
     )
@@ -91,9 +104,11 @@ async def save_booking_settings(
         message = str(exc) if "от " in str(exc) else "Введите целые числа"
         return redirect("/admin/settings", err=message)
 
-    before = {**get_setting(db, BOOKING), "sync_minutes": get_setting(db, GOOGLE_SYNC).get("interval_minutes")}
+    google = get_setting(db, GOOGLE_SYNC)
+    before = {**get_setting(db, BOOKING), "sync_minutes": google.get("interval_minutes")}
     set_setting(db, BOOKING, value)
-    set_setting(db, GOOGLE_SYNC, {"interval_minutes": sync})
+    # Выключатель Google живёт в той же настройке — сохраняем его как был
+    set_setting(db, GOOGLE_SYNC, {**google, "interval_minutes": sync})
     log_action(
         db, actor=user.login, action="settings.booking", entity_type="app_setting", entity_id=BOOKING,
         details=changed_fields(before, {**value, "sync_minutes": sync}), user_id=user.id,
@@ -103,6 +118,40 @@ async def save_booking_settings(
     applied = reschedule_google_sync(sync)
     note = "" if applied else " — интервал синхронизации применится после перезапуска"
     return redirect("/admin/settings", ok="Настройки записи сохранены" + note)
+
+
+@router.post("/google")
+async def toggle_google(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_settings")),
+):
+    """Включить или выключить Google Calendar. Включение сразу выгружает накопленное."""
+    form = await request.form()
+    back = safe_back(form.get("back")) or "/admin/settings"
+    enable = form.get("enabled") == "1"
+    config = get_setting(db, GOOGLE_SYNC)
+    if bool(config.get("enabled", True)) == enable:
+        return redirect(back, ok="Google Calendar уже " + ("включён" if enable else "выключен"))
+    set_setting(db, GOOGLE_SYNC, {**config, "enabled": enable})
+    log_action(
+        db, actor=user.login, action="settings.google", entity_type="app_setting",
+        entity_id=GOOGLE_SYNC, details={"enabled": enable}, user_id=user.id,
+    )
+    if not enable:
+        return redirect(back, ok="Google Calendar выключен: записи живут в админке и боте, подключения сохранены")
+    try:
+        result = calendar_service.reconcile(db)
+    except Exception:  # noqa: BLE001
+        logger.exception("Сверка с Google при включении сорвалась")
+        return redirect(back, err="Google Calendar включён, но выгрузка записей сорвалась — проверьте журнал")
+    message = (
+        f"Google Calendar включён. Событий создано: {result['created']}, "
+        f"обновлено: {result['updated']}, удалено: {result['deleted']}"
+    )
+    if result["failed"]:
+        message += f", не удалось: {result['failed']} — подробности в аудите"
+    return redirect(back, ok=message)
 
 
 @router.post("/reminders")

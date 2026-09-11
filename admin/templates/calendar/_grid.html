@@ -1,0 +1,89 @@
+{% set height = grid.minutes * ppm %}
+{# В неделе семь колонок — делаем их уже, чтобы воскресенье помещалось без прокрутки #}
+{% set col_width = 'min-w-[180px]' if view == 'day' else 'min-w-[128px]' %}
+<div class="bg-white rounded-xl shadow overflow-auto max-h-[78vh]">
+  <div class="flex min-w-max w-full">
+    <div class="w-14 shrink-0 sticky left-0 z-40 bg-white border-r border-slate-200">
+      <div class="h-14 sticky top-0 z-40 bg-white border-b border-slate-200"></div>
+      <div class="relative" style="height: {{ '%.1f'|format(height) }}px">
+        {% for top, label in grid.hours %}
+        <div class="absolute right-1.5 text-[11px] leading-none text-slate-400"
+             style="top: {{ '%.1f'|format(top * ppm + (2 if loop.first else -5)) }}px">{{ label }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% for col in grid.columns %}
+    <div class="flex-1 {{ col_width }} border-r border-slate-200 last:border-r-0">
+      <div class="h-14 sticky top-0 z-30 px-2 py-1.5 border-b border-slate-200 {{ 'bg-sky-50' if col.day == today_date else 'bg-slate-50' }}">
+        {% if view == 'day' %}
+        <a href="{{ link(view='week', employee_id=col.employee.id) }}" class="block font-semibold text-sm truncate hover:underline" title="Неделя: {{ col.employee.name }}">
+          {{ col.employee.name }}
+          {% if google_calendars.get(col.employee.id) %}<span class="ml-1 align-middle text-[10px] font-bold text-sky-700 bg-sky-100 rounded px-1" title="Google Calendar: {{ google_calendars[col.employee.id] }}">G</span>{% endif %}
+        </a>
+        <div class="text-xs text-slate-500 truncate">{{ col.employee.specialization or '' }}</div>
+        {% else %}
+        <a href="{{ link(view='day', date=col.day.isoformat(), employee_id=0) }}" class="block font-semibold text-sm hover:underline">
+          {{ weekday_short[col.day.weekday()] }}, {{ col.day.strftime('%d.%m') }}
+        </a>
+        <div class="text-xs text-slate-500">
+          {% set active = col.blocks|selectattr('booking.status', 'equalto', 'booked')|list|length %}
+          {{ active|plural('запись', 'записи', 'записей') if active else 'нет записей' }}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="relative bg-slate-100" style="height: {{ '%.1f'|format(height) }}px">
+        {% for s in col.working %}
+        <div class="absolute inset-x-0 bg-white" style="top: {{ '%.1f'|format(s.top * ppm) }}px; height: {{ '%.1f'|format(s.height * ppm) }}px"></div>
+        {% endfor %}
+        {% for top, label in grid.hours %}
+        <div class="absolute inset-x-0 border-t border-slate-200" style="top: {{ '%.1f'|format(top * ppm) }}px"></div>
+        {% endfor %}
+        {% if col.day_off %}
+        <div class="absolute inset-x-0 top-3 text-center text-xs text-slate-500 px-2">{{ col.day_off }}</div>
+        {% endif %}
+
+        {% for s in col.google_busy %}
+        <div class="absolute inset-x-1 rounded border border-slate-300 text-[10px] text-slate-500 px-1 overflow-hidden"
+             style="top: {{ '%.1f'|format(s.top * ppm) }}px; height: {{ '%.1f'|format(s.height * ppm) }}px; background: repeating-linear-gradient(135deg,#e2e8f0 0 6px,#f8fafc 6px 12px)"
+             title="Занято в Google Calendar — событие не из записи">Google</div>
+        {% endfor %}
+
+        {% if can_create %}
+        {% for f in col.free %}
+        <a href="/admin/bookings/new?employee_id={{ col.employee.id }}&date={{ col.day.isoformat() }}&slot={{ f.slot }}&back={{ back|urlencode }}"
+           class="group absolute inset-x-0 hover:bg-sky-50" title="Записать на {{ f.slot }}"
+           style="top: {{ '%.1f'|format(f.top * ppm) }}px; height: {{ '%.1f'|format(f.height * ppm) }}px">
+          <span class="hidden group-hover:inline text-[11px] text-sky-700 px-1.5">+ {{ f.slot }}</span>
+        </a>
+        {% endfor %}
+        {% endif %}
+
+        {% for b in col.blocks %}
+        {% set bk = b.booking %}
+        {% set client_name = bk.client.name or bk.client.telegram_username or ('Клиент #' ~ bk.client_id) %}
+        <a href="/admin/bookings/{{ bk.id }}?back={{ back|urlencode }}"
+           class="absolute z-10 rounded-md border-l-4 shadow-sm px-1.5 py-0.5 text-[11px] leading-tight overflow-hidden hover:shadow-md hover:z-20 {{ colors.get(bk.status, '') }}"
+           style="top: {{ '%.1f'|format(b.top * ppm) }}px; height: {{ '%.1f'|format([b.height * ppm, 22]|max) }}px; left: calc({{ '%.3f'|format(b.lane * 100 / b.lanes) }}% + 2px); width: calc({{ '%.3f'|format(100 / b.lanes) }}% - 4px)"
+           title="{{ bk.start_at|localtime }}–{{ bk.end_at|localtime }} · {{ client_name }} · {{ bk.service.name }}{% if view != 'day' %} · {{ bk.employee.name }}{% endif %} · {{ status_labels.get(bk.status, bk.status) }}">
+          <div class="font-semibold truncate">{{ bk.start_at|localtime }}–{{ bk.end_at|localtime }} {{ icons.get(bk.source, '') }}</div>
+          {# Строк столько, сколько влезает по высоте: получасовая запись — две #}
+          {% if b.height < 45 %}
+          <div class="truncate">{{ client_name }} · {{ bk.service.name }}</div>
+          {% else %}
+          <div class="truncate">{{ client_name }}</div>
+          <div class="truncate text-slate-600">{{ bk.service.name }}</div>
+          {% if b.height >= 60 and bk.client.phone %}<div class="truncate text-slate-500">{{ bk.client.phone }}</div>{% endif %}
+          {% endif %}
+        </a>
+        {% endfor %}
+
+        {% if col.now_top is not none %}
+        <div class="absolute inset-x-0 z-20 border-t-2 border-rose-500 pointer-events-none" style="top: {{ '%.1f'|format(col.now_top * ppm) }}px"></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>

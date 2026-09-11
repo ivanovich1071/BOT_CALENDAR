@@ -9,7 +9,8 @@ from app.models.app_setting import AppSetting
 logger = logging.getLogger(__name__)
 
 # Ключи настроек
-GOOGLE_SYNC = "google_sync"          # {"interval_minutes": 10}
+GOOGLE_SYNC = "google_sync"          # {"enabled": true, "interval_minutes": 10}
+GOOGLE_PENDING = "google_pending"    # события, удалённые у нас при выключенном Google
 REMINDERS = "reminders"              # {"enabled": true, "hours_before": [24, 1]}
 COMPANY = "company"                  # профиль компании: название, контакты, приветствие
 AI = "ai"                            # модель и лимиты ИИ-консультанта (пусто — из .env)
@@ -21,7 +22,8 @@ COMPANY_FIELDS = (
 )
 
 DEFAULTS: dict[str, dict] = {
-    GOOGLE_SYNC: {"interval_minutes": 10},
+    GOOGLE_SYNC: {"enabled": True, "interval_minutes": 10},
+    GOOGLE_PENDING: {"deletes": []},
     REMINDERS: {"enabled": True, "hours_before": [24, 1]},
     COMPANY: {field: "" for field in COMPANY_FIELDS},
     AI: {"model": "", "temperature": None, "hourly_limit": 30, "history_messages": 12, "history_hours": 3},

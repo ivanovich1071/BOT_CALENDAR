@@ -16,6 +16,27 @@
   {% endfor %}
 </div>
 
+<form method="post" action="/admin/settings/google" class="bg-white rounded-xl shadow p-6 max-w-2xl mb-8 space-y-3 text-sm"
+      {% if google_on %}onsubmit="return confirm('Выключить Google Calendar? Новые записи не попадут в Google, пока не включите снова.')"{% endif %}>
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <h2 class="font-semibold">Google Calendar</h2>
+    {% if google_on %}<span class="text-emerald-600">● Включён</span>{% else %}<span class="text-slate-500">● Выключен</span>{% endif %}
+  </div>
+  <p class="text-xs text-slate-500">
+    Включён — записи пишутся в рабочие календари сотрудников, занятость Google закрывает время в боте,
+    правки из Google подтягиваются. Выключен — всё работает внутри админки и бота, подключения
+    и подкалендари сохраняются. При включении записи, созданные и изменённые за время паузы,
+    выгружаются в Google сразу.
+    {% if google_pending %}Ждут удаления в Google: {{ google_pending }}.{% endif %}
+  </p>
+  <input type="hidden" name="enabled" value="{{ '0' if google_on else '1' }}">
+  <div class="flex items-center gap-3">
+    <button class="{{ 'border border-slate-300 hover:bg-slate-50' if google_on else 'bg-slate-900 text-white hover:bg-slate-700' }} px-5 py-2 rounded-lg">
+      {{ 'Выключить' if google_on else 'Включить и выгрузить записи' }}</button>
+    <a href="/admin/calendars" class="text-sky-600 hover:underline">Подключения сотрудников</a>
+  </div>
+</form>
+
 <form method="post" action="/admin/settings/reminders" class="bg-white rounded-xl shadow p-6 max-w-2xl mb-8 space-y-4 text-sm">
   <div>
     <h2 class="font-semibold">Напоминания клиентам</h2>
