@@ -10,16 +10,17 @@ from app.config.security import create_access_token, verify_password
 from app.config.settings import get_settings
 from app.db.database import get_db
 from app.models.user import User
+from app.services import demo_service
 from app.services.audit_service import log_action
 
 router = APIRouter()
 
 
 @router.get("/login")
-async def login_page(request: Request, error: str | None = None):
+async def login_page(request: Request, error: str | None = None, db: Session = Depends(get_db)):
     if request.cookies.get(SESSION_COOKIE):
         return Response(status_code=303, headers={"Location": "/admin"})
-    return render(request, "login.html", {"error": error})
+    return render(request, "login.html", {"error": error, "demo_logins": demo_service.login_hints(db)})
 
 
 @router.post("/login")
@@ -35,7 +36,7 @@ async def login(
         return render(
             request,
             "login.html",
-            {"error": "Неверный логин или пароль"},
+            {"error": "Неверный логин или пароль", "demo_logins": demo_service.login_hints(db)},
             status_code=401,
         )
 

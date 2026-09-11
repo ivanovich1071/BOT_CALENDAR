@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -29,6 +29,8 @@ class Employee(Base):
         ForeignKey("calendars.id", ondelete="SET NULL"), nullable=True
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # «Демо-специалист»: живёт только в админке, бот и ИИ его не видят
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -78,6 +78,39 @@
   <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
 </form>
 
+<div class="bg-white rounded-xl shadow p-6 max-w-2xl mb-8 space-y-3 text-sm">
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <h2 class="font-semibold">Демо-доступ</h2>
+    {% if demo.enabled %}<span class="text-emerald-600">● Настроен</span>{% else %}<span class="text-slate-500">● Не настроен</span>{% endif %}
+  </div>
+  <p class="text-xs text-slate-500">
+    Общие логины для гостей. Гость видит всю панель, а менять может только записи, которые создал сам,
+    и всё у «Демо-специалиста» — в боте его нет. Каждую ночь в 03:00 созданное гостями удаляется,
+    Демо-специалист возвращается к исходному. Записи и клиенты из бота не затрагиваются.
+  </p>
+  {% if demo.enabled %}
+  <table class="text-sm">
+    {% for item in demo.logins %}
+    <tr><td class="pr-4 py-1 text-slate-600">{{ item.label }}</td><td class="pr-4 py-1 font-mono">{{ item.login }}</td><td class="py-1 font-mono">{{ item.password }}</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/admin/settings/demo" class="flex items-center gap-3 flex-wrap">
+    <label class="flex items-center gap-2">
+      <input type="checkbox" name="show_on_login" {{ 'checked' if demo.show_on_login }} class="rounded"> Показывать демо-логины на странице входа
+    </label>
+    <button class="border border-slate-300 px-4 py-1.5 rounded-lg hover:bg-slate-50">Сохранить</button>
+  </form>
+  <form method="post" action="/admin/settings/demo/reset"
+        onsubmit="return confirm('Удалить всё, что создали гости, и вернуть Демо-специалиста к исходному?')">
+    <button class="text-rose-600 hover:underline">Вернуть демо к исходному сейчас</button>
+  </form>
+  {% else %}
+  <form method="post" action="/admin/settings/demo/setup">
+    <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Создать демо-доступ</button>
+  </form>
+  {% endif %}
+</div>
+
 <div class="bg-white rounded-xl shadow p-6 max-w-2xl space-y-2 text-sm">
   <h2 class="font-semibold mb-2">Система</h2>
   <div class="flex justify-between border-b border-slate-100 py-2"><span class="text-slate-500">Окружение</span><span>{{ app_env }}</span></div>

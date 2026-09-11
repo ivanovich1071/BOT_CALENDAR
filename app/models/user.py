@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, String, func
+from sqlalchemy import JSON, Boolean, DateTime, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -18,6 +18,8 @@ class User(Base):
     # Дополнительные гранулярные права поверх роли (см. models/enums.py)
     permissions: Mapped[list | None] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Общий логин демо-доступа: смотрит всё, меняет только демо-данные (admin/demo.py)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

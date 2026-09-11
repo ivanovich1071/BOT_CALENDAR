@@ -10,9 +10,10 @@ from app.api.dependencies import require_permission
 from app.config.settings import get_settings
 from app.db.database import get_db
 from app.models.user import User
-from app.services import calendar_service, reminder_service
+from app.services import calendar_service, demo_service, reminder_service
 from app.services.app_settings_service import (
     BOOKING,
+    DEMO,
     GOOGLE_PENDING,
     GOOGLE_SYNC,
     REMINDERS,
@@ -78,6 +79,7 @@ async def settings_page(
             "sync_minutes": get_setting(db, GOOGLE_SYNC).get("interval_minutes", 10),
             "google_on": calendar_service.google_enabled(db),
             "google_pending": len(get_setting(db, GOOGLE_PENDING).get("deletes") or []),
+            "demo": get_setting(db, DEMO),
             "page_title": "Настройки",
         },
     )
@@ -152,6 +154,46 @@ async def toggle_google(
     if result["failed"]:
         message += f", не удалось: {result['failed']} — подробности в аудите"
     return redirect(back, ok=message)
+
+
+@router.post("/demo/setup")
+async def setup_demo(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_settings")),
+):
+    """Демо-специалист и общие логины для гостей. Повторное нажатие ничего не дублирует."""
+    try:
+        demo_service.setup(db, actor=user.login)
+    except demo_service.DemoError as exc:
+        return redirect("/admin/settings", err=str(exc))
+    return redirect("/admin/settings", ok="Демо-доступ готов: логины и пароли — в карточке «Демо-доступ»")
+
+
+@router.post("/demo")
+async def save_demo(
+    show_on_login: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_settings")),
+):
+    show = show_on_login == "on"
+    set_setting(db, DEMO, {**get_setting(db, DEMO), "show_on_login": show})
+    log_action(
+        db, actor=user.login, action="settings.demo", entity_type="app_setting", entity_id=DEMO,
+        details={"show_on_login": show}, user_id=user.id,
+    )
+    return redirect("/admin/settings", ok="Демо-логины " + ("показываются" if show else "не показываются") + " на странице входа")
+
+
+@router.post("/demo/reset")
+async def reset_demo(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_settings")),
+):
+    result = demo_service.reset(db, actor=user.login)
+    return redirect(
+        "/admin/settings",
+        ok=f"Демо возвращено к исходному: удалено записей гостей — {result['bookings']}, клиентов — {result['clients']}",
+    )
 
 
 @router.post("/reminders")

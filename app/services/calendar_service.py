@@ -232,8 +232,9 @@ def _calendar_for(db: Session, booking: Booking) -> Calendar | None:
 
 def _event_body(booking: Booking, tz: str) -> dict:
     client_name = booking.client.name or "Клиент"
+    prefix = "[ДЕМО] " if booking.is_demo else ""
     return {
-        "summary": f"{booking.service.name} — {client_name}",
+        "summary": f"{prefix}{booking.service.name} — {client_name}",
         "description": f"Запись #{booking.id}\nУслуга: {booking.service.name}\n"
         f"Клиент: {client_name}\nТелефон: {booking.client.phone or '—'}"
         + (f"\nЗаметка: {booking.notes}" if booking.notes else ""),

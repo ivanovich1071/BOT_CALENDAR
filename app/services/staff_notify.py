@@ -126,6 +126,8 @@ def enqueue(
     Любая ошибка — только в лог: уведомление не должно ломать запись.
     """
     try:
+        if booking.is_demo:
+            return  # пробы гостей демо-доступа сотрудников не беспокоят
         target = employee or booking.employee
         if target is None or not target.telegram_user_id:
             return

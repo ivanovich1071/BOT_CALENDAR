@@ -3,9 +3,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 
+from admin.demo import demo_guard
 from admin.routes import (
     audit,
     bookings,
@@ -57,20 +58,12 @@ app = FastAPI(
 
 app.include_router(auth.router)
 app.include_router(google_oauth.router)
-app.include_router(dashboard.router)
-app.include_router(calendar_view.router)
-app.include_router(bookings.router)
-app.include_router(schedule.router)
-app.include_router(calendars.router)
-app.include_router(employees.router)
-app.include_router(services.router)
-app.include_router(clients.router)
-app.include_router(dialogs.router)
-app.include_router(company.router)
-app.include_router(knowledge.router)
-app.include_router(users.router)
-app.include_router(settings_page.router)
-app.include_router(audit.router)
+# Каждый роутер админки проходит через защиту демо-доступа: гость меняет только демо-данные
+for admin_router in (
+    dashboard, calendar_view, bookings, schedule, calendars, employees, services,
+    clients, dialogs, company, knowledge, users, settings_page, audit,
+):
+    app.include_router(admin_router.router, dependencies=[Depends(demo_guard)])
 
 
 def _service_available(host: str, port: int) -> bool:

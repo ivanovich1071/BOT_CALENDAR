@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 GOOGLE_SYNC_LOCK = "scheduler:google_sync"
 REMINDERS_LOCK = "scheduler:reminders"
 OUTBOX_LOCK = "scheduler:outbox"
+DEMO_RESET_LOCK = "scheduler:demo_reset"
+
+# Демо возвращается к исходному ночью, когда гостей нет
+DEMO_RESET_HOUR = 3
 
 # Уведомления сотрудникам уходят почти сразу — очередь проверяется раз в минуту
 OUTBOX_INTERVAL_SECONDS = 60
@@ -135,6 +139,25 @@ def ai_history_job() -> None:
         db.close()
 
 
+def demo_reset_job() -> None:
+    """Ночью демо возвращается к исходному — если демо-доступ настроен."""
+    from app.services import demo_service
+
+    lock = _acquire(DEMO_RESET_LOCK, ttl_seconds=600)
+    if lock is False:
+        return
+    db = SessionLocal()
+    try:
+        if demo_service.enabled(db):
+            result = demo_service.reset(db)
+            logger.info("Демо возвращено к исходному: %s", result)
+    except Exception:  # noqa: BLE001
+        logger.exception("Ночной сброс демо сорвался")
+    finally:
+        db.close()
+        _release(lock)
+
+
 def sync_interval_minutes() -> int:
     db = SessionLocal()
     try:
@@ -181,6 +204,16 @@ def start_scheduler() -> AsyncIOScheduler:
         "interval",
         hours=24,
         id="ai_history",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        demo_reset_job,
+        "cron",
+        hour=DEMO_RESET_HOUR,
+        minute=0,
+        id="demo_reset",
         max_instances=1,
         coalesce=True,
         replace_existing=True,

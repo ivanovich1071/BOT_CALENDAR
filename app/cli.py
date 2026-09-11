@@ -14,7 +14,7 @@ from app.db.database import SessionLocal
 from app.models.booking import Booking
 from app.models.enums import BOOKED, BOOKING_STATUS_LABELS_RU
 from app.models.user import User
-from app.services import booking_flow, company_pack
+from app.services import booking_flow, company_pack, demo_service
 from app.services.audit_service import log_action
 from app.services.schedule_service import local_tz
 
@@ -150,6 +150,34 @@ def demo_reset(yes: bool) -> None:
         db.close()
 
 
+def demo_setup() -> None:
+    """Демо-специалист и общие логины гостей; повторный запуск пароли не меняет."""
+    db = SessionLocal()
+    try:
+        logins = demo_service.setup(db, actor="cli")
+    except demo_service.DemoError as e:
+        print(f"Демо-доступ не настроен: {e}")
+        sys.exit(1)
+    finally:
+        db.close()
+    print("Демо-доступ готов. Показ логинов на странице входа включается в «Настройках».")
+    for item in logins:
+        print(f"  {item['label']}: {item['login']} / {item['password']}")
+
+
+def demo_reset_guest(yes: bool) -> None:
+    """То же, что ночной сброс: удаляет пробы гостей, записи из бота не трогает."""
+    if not _confirm("Удалить записи и клиентов, созданных гостями, и вернуть Демо-специалиста к исходному?", yes):
+        print("Отменено.")
+        return
+    db = SessionLocal()
+    try:
+        result = demo_service.reset(db, actor="cli")
+    finally:
+        db.close()
+    print(f"Готово: удалено записей {result['bookings']}, клиентов {result['clients']}.")
+
+
 def ai_model(model: str | None) -> None:
     """Показать или сменить модель ИИ-консультанта (пусто — берётся OPENROUTER_MODEL из .env)."""
     from app.config.settings import get_settings
@@ -184,8 +212,13 @@ def main() -> None:
     p_export = sub.add_parser("export-company", help="Выгрузить пакет компании (JSON)")
     p_export.add_argument("path", nargs="?")
 
-    p_reset = sub.add_parser("demo-reset", help="Отменить и удалить тестовые записи")
+    p_reset = sub.add_parser("demo-reset", help="Отменить и удалить ВСЕ записи (чистка перед сдачей)")
     p_reset.add_argument("--yes", action="store_true", help="Не спрашивать подтверждение")
+
+    sub.add_parser("demo-setup", help="Создать демо-доступ: Демо-специалист и логины гостей")
+
+    p_guest = sub.add_parser("demo-reset-guest", help="Удалить пробы гостей демо-доступа (как ночной сброс)")
+    p_guest.add_argument("--yes", action="store_true", help="Не спрашивать подтверждение")
 
     p_model = sub.add_parser("ai-model", help="Показать или сменить модель ИИ-консультанта")
     p_model.add_argument("model", nargs="?")
@@ -201,6 +234,10 @@ def main() -> None:
         export_company(args.path)
     elif args.cmd == "demo-reset":
         demo_reset(args.yes)
+    elif args.cmd == "demo-setup":
+        demo_setup()
+    elif args.cmd == "demo-reset-guest":
+        demo_reset_guest(args.yes)
     elif args.cmd == "ai-model":
         ai_model(args.model)
 

@@ -117,8 +117,12 @@ def create(
     actor: str,
     notes: str | None = None,
     user_id: int | None = None,
+    demo: bool = False,
 ) -> tuple[Booking, GoogleResult]:
-    """Создаёт запись в БД и заводит событие в календаре сотрудника."""
+    """Создаёт запись в БД и заводит событие в календаре сотрудника.
+
+    demo — запись гостя демо-доступа; к Демо-специалисту любая запись демо.
+    """
     busy = _google_busy(db, employee_id, start_at.astimezone(local_tz()).date())
     booking = booking_service.create_booking(
         db,
@@ -130,6 +134,10 @@ def create(
         notes=notes,
         busy_intervals=busy,
     )
+    if demo or booking.employee.is_demo:
+        # Помечаем до события в Google: в его названии будет «[ДЕМО]»
+        booking.is_demo = True
+        db.commit()
     google = _safe_push(db, booking, "create", calendar_service.push_booking)
     log_action(
         db,

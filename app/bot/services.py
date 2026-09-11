@@ -102,7 +102,8 @@ def employees_with_schedule(db: Session, service_id: int | None = None) -> list[
     rows = db.scalars(
         select(Employee)
         .options(selectinload(Employee.services))
-        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        # Демо-специалист существует только в админке
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None), Employee.is_demo.is_(False))
         .order_by(Employee.name)
     ).all()
     today = local_now().date()
@@ -219,6 +220,9 @@ def create(
     notes: str | None = None,
 ) -> dict:
     """Создаёт запись. SlotTakenError пробрасывается — хендлер попросит выбрать другое время."""
+    employee = db.get(Employee, employee_id)
+    if employee is None or employee.is_demo:
+        raise booking_service.NotFoundError("Сотрудник не найден")
     booking, _google = booking_flow.create(
         db,
         client_id=client_id,

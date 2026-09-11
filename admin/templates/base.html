@@ -43,6 +43,12 @@
     </div>
   </aside>
   <main class="flex-1 min-w-0 p-8 {{ '' if wide else 'max-w-6xl' }}">
+    {% if user.is_demo %}
+    <div class="mb-4 px-4 py-2.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-sm">
+      <b>Демо-доступ.</b> Смотрите любой раздел. Менять можно записи, которые вы создали, и всё у
+      «Демо-специалиста»: расписание, выходные, записи. Ночью демо возвращается к исходному.
+    </div>
+    {% endif %}
     {% if flash_ok %}<div class="mb-4 px-4 py-3 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">{{ flash_ok }}</div>{% endif %}
     {% if flash_err %}<div class="mb-4 px-4 py-3 rounded-lg bg-rose-100 text-rose-800 border border-rose-300">{{ flash_err }}</div>{% endif %}
     {% block content %}{% endblock %}

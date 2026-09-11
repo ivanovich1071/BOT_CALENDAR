@@ -207,7 +207,11 @@ async def create_booking_post(
         name = (form.get("client_name") or "").strip()
         if not name:
             return redirect(retry, err="Выберите клиента или укажите имя нового")
-        client = Client(name=name, phone=(form.get("client_phone") or "").strip() or None)
+        client = Client(
+            name=name,
+            phone=(form.get("client_phone") or "").strip() or None,
+            is_demo=bool(user.is_demo),
+        )
         db.add(client)
         db.commit()
         client_id = client.id
@@ -227,6 +231,7 @@ async def create_booking_post(
             notes=notes,
             actor=user.login,
             user_id=user.id,
+            demo=bool(user.is_demo),
         )
     except booking_service.SlotTakenError:
         return redirect(retry, err="Слот уже занят")

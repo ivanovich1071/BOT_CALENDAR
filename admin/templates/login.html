@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block auth_content %}
-<div class="min-h-screen flex items-center justify-center bg-slate-900">
+<div class="min-h-screen flex items-center justify-center bg-slate-900 p-4">
   <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
     <h1 class="text-xl font-bold mb-1">📅 Booking Platform</h1>
     <p class="text-sm text-slate-500 mb-6">Вход в панель управления</p>
@@ -12,6 +12,24 @@
              class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400">
       <button class="w-full bg-slate-900 text-white rounded-lg py-2 hover:bg-slate-700 transition">Войти</button>
     </form>
+
+    {% if demo_logins %}
+    <div class="mt-6 pt-5 border-t border-slate-200">
+      <p class="text-sm font-semibold">Демо-доступ</p>
+      <p class="text-xs text-slate-500 mb-3">Попробуйте панель без регистрации. Всё, что вы измените, ночью вернётся к исходному.</p>
+      {% for item in demo_logins %}
+      <form method="post" action="/login" class="flex items-center justify-between gap-3 mb-2 last:mb-0">
+        <input type="hidden" name="login" value="{{ item.login }}">
+        <input type="hidden" name="password" value="{{ item.password }}">
+        <div class="text-xs leading-snug">
+          <div class="text-sm font-medium">{{ item.label }}</div>
+          <div class="text-slate-500">{{ item.login }} · {{ item.password }}</div>
+        </div>
+        <button class="shrink-0 border border-slate-300 rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50">Войти</button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

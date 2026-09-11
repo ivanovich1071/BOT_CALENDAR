@@ -72,7 +72,8 @@ def export_pack(db: Session) -> dict:
         select(Service).where(Service.archived_at.is_(None)).order_by(Service.sort_order, Service.name)
     ).all()
     employees = db.scalars(
-        select(Employee).where(Employee.archived_at.is_(None)).order_by(Employee.name)
+        # Демо-специалист — часть демо-доступа, а не компании: в пакет не попадает и импортом не архивируется
+        select(Employee).where(Employee.archived_at.is_(None), Employee.is_demo.is_(False)).order_by(Employee.name)
     ).all()
     articles = db.scalars(
         select(KnowledgeArticle).order_by(KnowledgeArticle.sort_order, KnowledgeArticle.id)
@@ -302,7 +303,7 @@ def plan_import(db: Session, pack: dict) -> ImportPlan:
     """Что изменится при импорте — показывается до применения."""
     plan = ImportPlan(company=pack["company"]["name"], articles=len(pack["knowledge"]))
     services = _by_name(db.scalars(select(Service)).all())
-    employees = _by_name(db.scalars(select(Employee)).all())
+    employees = _by_name(db.scalars(select(Employee).where(Employee.is_demo.is_(False))).all())
     pack_services = {_key(s["name"]) for s in pack["services"]}
     pack_employees = {_key(e["name"]) for e in pack["employees"]}
 
@@ -361,7 +362,7 @@ def import_pack(db: Session, pack: dict, *, actor: str, user_id: int | None = No
             if k not in pack_services and row.archived_at is None:
                 row.archived_at = now
 
-        employees = _by_name(db.scalars(select(Employee)).all())
+        employees = _by_name(db.scalars(select(Employee).where(Employee.is_demo.is_(False))).all())
         for e in pack["employees"]:
             row = employees.get(_key(e["name"]))
             if row is None:
