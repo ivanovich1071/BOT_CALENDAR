@@ -29,6 +29,16 @@ def profile_texts(company: dict) -> dict:
     }
 
 
+async def bot_username(token: str) -> str:
+    """@username бота — для ссылок t.me/<бот>?start=…"""
+    bot = Bot(token)
+    try:
+        me = await bot.get_me()
+        return me.username
+    finally:
+        await bot.session.close()
+
+
 async def apply_bot_profile(token: str, company: dict) -> None:
     texts = profile_texts(company)
     if not texts["name"]:

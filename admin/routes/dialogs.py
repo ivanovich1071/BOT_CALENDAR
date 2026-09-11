@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from admin.flash import redirect
+from admin.scope import client_visible, forbidden, own_employee_id
 from admin.templating import render
 from app.ai.agent import HISTORY_RETENTION_DAYS
 from app.api.dependencies import get_current_user
@@ -30,13 +31,17 @@ async def dialogs_page(
     if not user.has_permission("view_clients"):
         return _forbidden(request, user)
     last = func.max(AiMessage.created_at)
-    rows = db.execute(
+    query = (
         select(AiMessage.client_id, func.count(AiMessage.id), last)
         .where(AiMessage.role.in_(("user", "assistant")))
         .group_by(AiMessage.client_id)
         .order_by(last.desc())
         .limit(200)
-    ).all()
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        query = query.where(AiMessage.client_id.in_(select(Booking.client_id).where(Booking.employee_id == own)))
+    rows = db.execute(query).all()
     clients = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_([r[0] for r in rows])))}
     items = [
         {"client": clients[client_id], "count": count, "last": last_at}
@@ -68,6 +73,8 @@ async def dialog_thread(
     client = db.get(Client, client_id)
     if client is None:
         return redirect("/admin/dialogs", err="Клиент не найден")
+    if not client_visible(db, user, client_id):
+        return forbidden(request, user)
     messages = db.scalars(
         select(AiMessage)
         .where(AiMessage.client_id == client_id)

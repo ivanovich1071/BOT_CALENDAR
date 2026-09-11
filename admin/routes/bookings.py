@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from admin.flash import redirect
+from admin.scope import FOREIGN, can_touch, forbidden, own_clients_clause, own_employee_id
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
 from app.db.database import get_db
@@ -35,6 +36,19 @@ def _created_message(google) -> str:
     return "Запись создана"
 
 
+def _employees_for(db: Session, user) -> list[Employee]:
+    """Действующие сотрудники, с которыми пользователю можно работать."""
+    q = (
+        select(Employee)
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        q = q.where(Employee.id == own)
+    return db.scalars(q).all()
+
+
 @router.get("")
 async def list_bookings(
     request: Request,
@@ -60,16 +74,14 @@ async def list_bookings(
         .where(Booking.start_at < end_utc, Booking.end_at > start_utc)
         .order_by(Booking.start_at)
     )
+    own = own_employee_id(db, user)
+    if own is not None:
+        q = q.where(Booking.employee_id == own)
     if employee_id:
         q = q.where(Booking.employee_id == employee_id)
     if status:
         q = q.where(Booking.status == status)
     bookings = db.scalars(q).all()
-    employees = db.scalars(
-        select(Employee)
-        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
-        .order_by(Employee.name)
-    ).all()
     return render(
         request,
         "bookings/list.html",
@@ -77,7 +89,7 @@ async def list_bookings(
             "user": user,
             "nav": "bookings",
             "items": bookings,
-            "employees": employees,
+            "employees": _employees_for(db, user),
             "statuses": BOOKING_STATUSES,
             "status_labels": BOOKING_STATUS_LABELS_RU,
             "day": day.isoformat(),
@@ -96,17 +108,17 @@ async def new_booking(
     user=Depends(require_permission("create_booking")),
     db: Session = Depends(get_db),
 ):
-    employees = db.scalars(
-        select(Employee)
-        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
-        .order_by(Employee.name)
-    ).all()
+    employees = _employees_for(db, user)
     services = db.scalars(
         select(Service)
         .where(Service.is_active.is_(True), Service.archived_at.is_(None))
         .order_by(Service.sort_order, Service.name)
     ).all()
-    clients = db.scalars(select(Client).order_by(Client.name.nulls_last()).limit(200)).all()
+    clients_q = select(Client).where(Client.archived_at.is_(None)).order_by(Client.name.nulls_last()).limit(200)
+    own = own_employee_id(db, user)
+    if own is not None:
+        clients_q = clients_q.where(own_clients_clause(own))
+    clients = db.scalars(clients_q).all()
     return render(
         request,
         "bookings/form.html",
@@ -135,7 +147,7 @@ async def slots(
     db: Session = Depends(get_db),
 ):
     """HTMX-фрагмент со свободными слотами (расписание − брони − занятость Google)."""
-    if not user.has_permission("view_calendar"):
+    if not user.has_permission("view_calendar") or not can_touch(db, user, employee_id):
         return render(request, "bookings/_slots.html", {"slots": [], "error": "Недостаточно прав"})
     day = _parse_date(date)
     if day is None or employee_id == 0 or service_id == 0:
@@ -170,6 +182,8 @@ async def create_booking_post(
 
     if not (employee_id and service_id and day and slot):
         return redirect(back, err="Заполните все поля")
+    if not can_touch(db, user, employee_id):
+        return redirect(back, err=FOREIGN)
     if not client_id:
         name = (form.get("client_name") or "").strip()
         if not name:
@@ -215,6 +229,8 @@ async def reschedule_form(
     booking = db.get(Booking, booking_id)
     if booking is None:
         return redirect("/admin/bookings", err="Запись не найдена")
+    if not can_touch(db, user, booking.employee_id):
+        return forbidden(request, user)
     return render(
         request,
         "bookings/reschedule.html",
@@ -234,6 +250,11 @@ async def reschedule_post(
     user=Depends(require_permission("edit_booking")),
     db: Session = Depends(get_db),
 ):
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        return redirect("/admin/bookings", err="Запись не найдена")
+    if not can_touch(db, user, booking.employee_id):
+        return redirect("/admin/bookings", err=FOREIGN)
     form = await request.form()
     day = _parse_date(form.get("date") or "")
     slot = (form.get("slot") or "").strip()
@@ -273,6 +294,11 @@ async def change_status(
     status = form.get("status") or ""
     if status not in BOOKING_STATUSES:
         return redirect("/admin/bookings", err="Неверный статус")
+    current = db.get(Booking, booking_id)
+    if current is None:
+        return redirect("/admin/bookings", err="Запись не найдена")
+    if not can_touch(db, user, current.employee_id):
+        return redirect("/admin/bookings", err=FOREIGN)
     try:
         booking, google = booking_flow.set_status(
             db, booking_id, status, actor=user.login, user_id=user.id
@@ -308,11 +334,11 @@ async def booking_card(
     booking = db.get(Booking, booking_id)
     if booking is None:
         return redirect("/admin/bookings", err="Запись не найдена")
+    if not can_touch(db, user, booking.employee_id):
+        return forbidden(request, user)
 
-    # В выпадающих списках — действующие плюс текущие значения записи, даже если они в архиве
-    employees = db.scalars(
-        select(Employee).where(Employee.archived_at.is_(None)).order_by(Employee.name)
-    ).all()
+    # В выпадающих списках — доступные плюс текущие значения записи, даже если они в архиве
+    employees = _employees_for(db, user)
     if booking.employee not in employees:
         employees = [booking.employee, *employees]
     services = db.scalars(
@@ -320,9 +346,11 @@ async def booking_card(
     ).all()
     if booking.service not in services:
         services = [booking.service, *services]
-    clients = db.scalars(
-        select(Client).where(Client.archived_at.is_(None)).order_by(Client.name.nulls_last()).limit(300)
-    ).all()
+    clients_q = select(Client).where(Client.archived_at.is_(None)).order_by(Client.name.nulls_last()).limit(300)
+    own = own_employee_id(db, user)
+    if own is not None:
+        clients_q = clients_q.where(own_clients_clause(own))
+    clients = db.scalars(clients_q).all()
     if booking.client not in clients:
         clients = [booking.client, *clients]
     history = db.scalars(
@@ -362,6 +390,9 @@ async def update_booking_post(
 ):
     form = await request.form()
     back = f"/admin/bookings/{booking_id}"
+    current = db.get(Booking, booking_id)
+    if current is None:
+        return redirect("/admin/bookings", err="Запись не найдена")
     day = _parse_date(form.get("date") or "")
     try:
         employee_id = int(form.get("employee_id") or 0)
@@ -371,6 +402,8 @@ async def update_booking_post(
         start_local = datetime.combine(day, time(int(hh), int(mm)), tzinfo=local_tz())
     except (TypeError, ValueError):
         return redirect(back, err="Укажите сотрудника, услугу, клиента, дату и время")
+    if not can_touch(db, user, current.employee_id) or not can_touch(db, user, employee_id):
+        return redirect(back, err=FOREIGN)
     notes = str(form.get("notes") or "").strip() or None
     try:
         _booking, google = booking_flow.update(
@@ -401,6 +434,8 @@ async def delete_booking_post(
     booking = db.get(Booking, booking_id)
     if booking is None:
         return redirect("/admin/bookings", err="Запись не найдена")
+    if not can_touch(db, user, booking.employee_id):
+        return redirect("/admin/bookings", err=FOREIGN)
     day = booking.start_at.astimezone(local_tz()).date().isoformat()
     google = booking_flow.delete(db, booking_id, actor=user.login, user_id=user.id)
     message = "Запись удалена"

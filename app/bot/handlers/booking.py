@@ -25,7 +25,7 @@ router = Router(name="booking")
 
 async def calendar_markup(employee_id: int, year: int, month: int):
     """Календарь месяца: нажимаются только дни, когда специалист принимает."""
-    min_date, max_date = services.horizon()
+    min_date, max_date = await run_db(services.horizon)
     days = await run_db(services.open_days, employee_id, min_date, max_date)
     return build_calendar(year, month, min_date=min_date, max_date=max_date, allowed_days=days)
 

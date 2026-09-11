@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from admin.scope import own_employee_id
 from admin.templating import render
 from app.api.dependencies import get_current_user
 from app.db.database import get_db
@@ -34,7 +35,8 @@ async def dashboard(
     day_end_utc = day_end.astimezone(ZoneInfo("UTC"))
     week_end_utc = week_end.astimezone(ZoneInfo("UTC"))
 
-    today_bookings = db.scalars(
+    own = own_employee_id(db, user)
+    today_q = (
         select(Booking)
         .options(
             selectinload(Booking.client),
@@ -47,18 +49,20 @@ async def dashboard(
             Booking.end_at > day_start_utc,
         )
         .order_by(Booking.start_at)
-    ).all()
+    )
+    week_q = select(func.count(Booking.id)).where(
+        Booking.status == BOOKED,
+        Booking.start_at < week_end_utc,
+        Booking.end_at > day_start_utc,
+    )
+    if own is not None:
+        today_q = today_q.where(Booking.employee_id == own)
+        week_q = week_q.where(Booking.employee_id == own)
+    today_bookings = db.scalars(today_q).all()
 
     stats = {
         "today": len(today_bookings),
-        "week": db.scalar(
-            select(func.count(Booking.id)).where(
-                Booking.status == BOOKED,
-                Booking.start_at < week_end_utc,
-                Booking.end_at > day_start_utc,
-            )
-        )
-        or 0,
+        "week": db.scalar(week_q) or 0,
         "clients": db.scalar(select(func.count(Client.id)).where(Client.archived_at.is_(None))) or 0,
         "employees": db.scalar(
             select(func.count(Employee.id)).where(Employee.is_active.is_(True), Employee.archived_at.is_(None))

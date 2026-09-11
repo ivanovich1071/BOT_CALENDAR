@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-2">Расписание</h1>
-<p class="text-sm text-slate-500 mb-4">Недельный шаблон рабочих часов. Бронирование доступно только в эти интервалы (минус занятое в Google Calendar).</p>
+<p class="text-sm text-slate-500 mb-4">Недельный шаблон рабочих часов и исключения на конкретные даты. Бронирование доступно только в эти интервалы (минус занятое в Google Calendar).</p>
 
 {% if not employees %}
-<div class="bg-white rounded-xl shadow p-6 text-slate-500">Сначала добавьте сотрудников.</div>
+<div class="bg-white rounded-xl shadow p-6 text-slate-500">Сначала добавьте сотрудников{% if not user.has_permission('view_all') %} или попросите администратора привязать ваш логин к сотруднику{% endif %}.</div>
 {% else %}
 <div class="flex gap-2 flex-wrap mb-4">
   {% for e in employees %}
@@ -42,6 +42,63 @@
   <button class="mt-4 bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить расписание</button>
   {% endif %}
 </form>
+
+<div class="bg-white rounded-xl shadow p-6 mt-6 text-sm">
+  <h2 class="font-semibold mb-1">{{ chosen.name }} — выходные и исключения</h2>
+  <p class="text-xs text-slate-500 mb-4">
+    Действуют поверх недельного расписания: <b>выходной / отпуск</b> закрывает дни целиком,
+    <b>закрыть время</b> убирает часы из рабочего дня (без часов — весь день),
+    <b>дополнительное окно</b> открывает приём вне расписания, например в субботу.
+    Уже созданные записи исключения не отменяют.
+  </p>
+
+  <table class="w-full mb-4">
+    <thead><tr class="text-left text-slate-500 border-b">
+      <th class="py-2">Даты</th><th class="py-2">Что</th><th class="py-2">Время</th><th class="py-2">Заметка</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for x in exceptions %}
+      <tr class="border-b last:border-0 {{ 'text-slate-400' if x.date_to < today }}">
+        <td class="py-2 whitespace-nowrap">{{ x.date_from.strftime('%d.%m.%Y') }}{% if x.date_to != x.date_from %} — {{ x.date_to.strftime('%d.%m.%Y') }}{% endif %}</td>
+        <td class="py-2">{{ kind_labels.get(x.kind, x.kind) }}</td>
+        <td class="py-2 whitespace-nowrap">{% if x.start_time %}{{ x.start_time.strftime('%H:%M') }}–{{ x.end_time.strftime('%H:%M') }}{% else %}весь день{% endif %}</td>
+        <td class="py-2 text-slate-500">{{ x.note or "" }}</td>
+        <td class="py-2 text-right">
+          {% if can_manage %}
+          <form method="post" action="/admin/schedule/exceptions/{{ x.id }}/delete" class="inline"
+                onsubmit="return confirm('Удалить исключение?')">
+            <button class="text-rose-600 hover:underline">Удалить</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="py-3 text-slate-500">Исключений нет — работает недельное расписание.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if can_manage %}
+  <form method="post" action="/admin/schedule/exceptions/add" class="grid grid-cols-2 md:grid-cols-6 gap-3 items-end border-t border-slate-100 pt-4">
+    <input type="hidden" name="employee_id" value="{{ chosen.id }}">
+    <label class="block"><span class="text-xs text-slate-500">Тип</span>
+      <select name="kind" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5">
+        {% for k in kinds %}<option value="{{ k }}">{{ kind_labels[k] }}</option>{% endfor %}
+      </select></label>
+    <label class="block"><span class="text-xs text-slate-500">С даты *</span>
+      <input type="date" name="date_from" required min="{{ today.isoformat() }}" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5"></label>
+    <label class="block"><span class="text-xs text-slate-500">По дату</span>
+      <input type="date" name="date_to" min="{{ today.isoformat() }}" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5"></label>
+    <label class="block"><span class="text-xs text-slate-500">Время с</span>
+      <input type="time" name="start_time" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5"></label>
+    <label class="block"><span class="text-xs text-slate-500">Время до</span>
+      <input type="time" name="end_time" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5"></label>
+    <button class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700">Добавить</button>
+    <label class="block col-span-2 md:col-span-6"><span class="text-xs text-slate-500">Заметка</span>
+      <input name="note" maxlength="200" placeholder="Например: отпуск, конференция" class="mt-0.5 w-full border border-slate-300 rounded-lg px-2 py-1.5"></label>
+  </form>
+  {% endif %}
+</div>
 {% endif %}
 {% endif %}
 {% endblock %}

@@ -53,9 +53,17 @@
     <input type="checkbox" name="is_active" {{ 'checked' if employee.is_active }} class="rounded">
     Активен {% if linked_user %}(виден в боте, может входить в админку){% else %}(виден в боте, к нему можно записаться){% endif %}
   </label>
-  {% if employee.telegram_user_id %}
-  <div class="text-xs text-slate-500">Telegram для уведомлений привязан (ID {{ employee.telegram_user_id }}).</div>
-  {% endif %}
+  <div class="border border-slate-200 rounded-lg p-4 flex items-center gap-3 flex-wrap">
+    <span class="font-medium">Уведомления в Telegram:</span>
+    {% if employee.telegram_user_id %}
+      <span class="text-emerald-700">● привязан</span>
+      <button form="tgunlink" class="text-rose-600 hover:underline">Отвязать</button>
+    {% else %}
+      <span class="text-slate-500">не привязан</span>
+      <button form="tglink" class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">Получить ссылку для сотрудника</button>
+    {% endif %}
+    <span class="text-xs text-slate-500 w-full">Новые записи, переносы и отмены к этому специалисту приходят ему в бота.</span>
+  </div>
   {% endif %}
 
   {% if not linked_user %}
@@ -133,5 +141,8 @@
   {% endif %}
 </div>
 <form id="resetpw" method="post" action="/admin/employees/{{ employee.id }}/reset-password"></form>
+<form id="tglink" method="post" action="/admin/employees/{{ employee.id }}/telegram-link"></form>
+<form id="tgunlink" method="post" action="/admin/employees/{{ employee.id }}/telegram-unlink"
+      onsubmit="return confirm('Отвязать Telegram? Уведомления перестанут приходить.')"></form>
 {% endif %}
 {% endblock %}

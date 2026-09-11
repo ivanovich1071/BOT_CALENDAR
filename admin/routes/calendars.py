@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from admin.flash import redirect
+from admin.scope import own_employee_id
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
 from app.config.security import create_access_token
@@ -24,9 +25,16 @@ async def calendars_page(
 ):
     if not user.has_permission("view_calendar"):
         return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
-    employees = db.scalars(
-        select(Employee).options(selectinload(Employee.google_accounts)).order_by(Employee.name)
-    ).all()
+    query = (
+        select(Employee)
+        .options(selectinload(Employee.google_accounts))
+        .where(Employee.archived_at.is_(None))
+        .order_by(Employee.name)
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        query = query.where(Employee.id == own)
+    employees = db.scalars(query).all()
     google_ready = True
     try:
         calendar_service._require_client()

@@ -12,6 +12,7 @@ from app.models.booking import Booking
 from app.models.enums import BOOKED, EXC_BLOCK, EXC_DAY_OFF, EXC_EXTRA
 from app.models.schedule import Schedule
 from app.models.schedule_exception import ScheduleException
+from app.services.app_settings_service import BOOKING, get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -146,14 +147,16 @@ def free_slots(
     for b in db.scalars(q):
         busy.append((b.start_at, b.end_at))
 
+    limits = get_setting(db, BOOKING)
     duration = timedelta(minutes=duration_minutes)
-    step = timedelta(minutes=SLOT_STEP_MINUTES)
-    now = local_now()
+    step = timedelta(minutes=max(5, int(limits.get("slot_step_minutes") or SLOT_STEP_MINUTES)))
+    # Записаться «на сейчас» нельзя: минимум времени до начала — из настроек
+    earliest = local_now() + timedelta(minutes=max(0, int(limits.get("min_lead_minutes") or 0)))
     slots: list[datetime] = []
     for s, e in working_intervals(db, employee_id, day):
         slot = s
         while slot + duration <= e:
-            if slot >= now and not any(
+            if slot >= earliest and not any(
                 _overlaps(slot, slot + duration, bs, be) for bs, be in busy
             ):
                 slots.append(slot)

@@ -17,6 +17,8 @@ PERM_MANAGE_EMPLOYEES = "manage_employees"
 PERM_MANAGE_SERVICES = "manage_services"
 PERM_MANAGE_SCHEDULE = "manage_schedule"
 PERM_VIEW_CALENDAR = "view_calendar"
+# Без этого права сотрудник видит и меняет только своё: записи, расписание, клиентов
+PERM_VIEW_ALL = "view_all"
 PERM_CREATE_BOOKING = "create_booking"
 PERM_EDIT_BOOKING = "edit_booking"
 PERM_DELETE_BOOKING = "delete_booking"
@@ -29,6 +31,7 @@ ALL_PERMISSIONS = (
     PERM_MANAGE_SERVICES,
     PERM_MANAGE_SCHEDULE,
     PERM_VIEW_CALENDAR,
+    PERM_VIEW_ALL,
     PERM_CREATE_BOOKING,
     PERM_EDIT_BOOKING,
     PERM_DELETE_BOOKING,
@@ -38,6 +41,7 @@ ALL_PERMISSIONS = (
 )
 
 PERMISSION_LABELS_RU = {
+    PERM_VIEW_ALL: "Видит всех сотрудников (иначе — только себя)",
     PERM_MANAGE_EMPLOYEES: "Управление сотрудниками",
     PERM_MANAGE_SERVICES: "Управление услугами",
     PERM_MANAGE_SCHEDULE: "Управление расписанием",
@@ -57,17 +61,21 @@ ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
         PERM_MANAGE_SERVICES,
         PERM_MANAGE_SCHEDULE,
         PERM_VIEW_CALENDAR,
+        PERM_VIEW_ALL,
         PERM_CREATE_BOOKING,
         PERM_EDIT_BOOKING,
         PERM_DELETE_BOOKING,
         PERM_VIEW_CLIENTS,
     ),
+    # Сотрудник по умолчанию ведёт своё время и свои записи — только своё
     EMPLOYEE: (
         PERM_VIEW_CALENDAR,
         PERM_CREATE_BOOKING,
         PERM_EDIT_BOOKING,
+        PERM_MANAGE_SCHEDULE,
+        PERM_VIEW_CLIENTS,
     ),
-    VIEWER: (PERM_VIEW_CALENDAR,),
+    VIEWER: (PERM_VIEW_CALENDAR, PERM_VIEW_ALL),
 }
 
 # Статусы записи

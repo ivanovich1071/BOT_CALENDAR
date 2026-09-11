@@ -12,7 +12,7 @@ import redis as redis_lib
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.bot.notify import send_due_reminders
+from app.bot.notify import send_due_reminders, send_outbox
 from app.config.settings import get_settings
 from app.db.database import SessionLocal
 from app.services import calendar_service
@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_SYNC_LOCK = "scheduler:google_sync"
 REMINDERS_LOCK = "scheduler:reminders"
+OUTBOX_LOCK = "scheduler:outbox"
+
+# Уведомления сотрудникам уходят почти сразу — очередь проверяется раз в минуту
+OUTBOX_INTERVAL_SECONDS = 60
 
 # Окно напоминания — 30 минут (reminder_service.REMINDER_GRACE): шесть попыток на обрыв связи
 REMINDERS_INTERVAL_MINUTES = 5
@@ -88,6 +92,34 @@ async def reminders_job() -> None:
         await asyncio.to_thread(_release, lock)
 
 
+async def outbox_job() -> None:
+    """Уведомления сотрудникам о записях к ним."""
+    token = get_settings().bot_token
+    if not token:
+        return
+    lock = await asyncio.to_thread(_acquire, OUTBOX_LOCK, 50)
+    if lock is False:
+        return
+    bot = Bot(token)
+    try:
+        sent = await send_outbox(bot)
+        if sent:
+            logger.info("Уведомлений сотрудникам отправлено — %s", sent)
+    except Exception:  # noqa: BLE001
+        logger.exception("Отправка уведомлений сотрудникам сорвалась")
+    finally:
+        await bot.session.close()
+        await asyncio.to_thread(_release, lock)
+
+
+def reschedule_google_sync(minutes: int) -> bool:
+    """Новый интервал синхронизации без перезапуска. False — планировщик не запущен."""
+    if _scheduler is None:
+        return False
+    _scheduler.reschedule_job("google_sync", trigger="interval", minutes=minutes)
+    return True
+
+
 def ai_history_job() -> None:
     """Диалоги с ИИ-консультантом хранятся ограниченное время."""
     from app.ai.agent import purge_old_messages
@@ -131,6 +163,15 @@ def start_scheduler() -> AsyncIOScheduler:
         "interval",
         minutes=REMINDERS_INTERVAL_MINUTES,
         id="reminders",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        outbox_job,
+        "interval",
+        seconds=OUTBOX_INTERVAL_SECONDS,
+        id="outbox",
         max_instances=1,
         coalesce=True,
         replace_existing=True,

@@ -9,9 +9,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from admin.diff import changed_fields
 from admin.flash import redirect
+from admin.scope import own_employee_id
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
+from app.bot.profile import bot_username
 from app.config.security import hash_password
+from app.config.settings import get_settings
+from app.services import staff_notify
 from app.db.database import get_db
 from app.models.booking import Booking
 from app.models.employee import Employee
@@ -81,12 +85,16 @@ async def list_employees(
 ):
     if not user.has_permission("manage_employees") and not user.has_permission("view_calendar"):
         return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
-    employees = db.scalars(
+    query = (
         select(Employee)
         .options(selectinload(Employee.user), selectinload(Employee.services))
         .where(Employee.archived_at.is_not(None) if archived else Employee.archived_at.is_(None))
         .order_by(Employee.name)
-    ).all()
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        query = query.where(Employee.id == own)
+    employees = db.scalars(query).all()
     data = [
         {
             "employee": e,
@@ -290,6 +298,60 @@ async def reset_password(
         entity_id=employee_id, user_id=user.id,
     )
     return redirect(f"/admin/employees/{employee_id}/edit", ok="Пароль обновлён")
+
+
+@router.post("/{employee_id}/telegram-link")
+async def telegram_link(
+    employee_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_employees")),
+):
+    employee = db.get(Employee, employee_id)
+    if employee is None:
+        return redirect("/admin/employees", err="Сотрудник не найден")
+    token = get_settings().bot_token
+    if not token:
+        return redirect(f"/admin/employees/{employee_id}/edit", err="BOT_TOKEN не заполнен в .env")
+    try:
+        username = await bot_username(token)
+    except Exception:  # noqa: BLE001 — сеть до Telegram бывает недоступна
+        return redirect(f"/admin/employees/{employee_id}/edit", err="Не удалось связаться с Telegram — попробуйте ещё раз")
+    link_token = staff_notify.create_link_token(db, employee_id)
+    log_action(
+        db, actor=user.login, action="employee.telegram_link_created", entity_type="employee",
+        entity_id=employee_id, user_id=user.id,
+    )
+    return render(
+        request,
+        "employees/telegram_link.html",
+        {
+            "user": user,
+            "nav": "employees",
+            "employee": employee,
+            "link": f"https://t.me/{username}?start={staff_notify.PAYLOAD_PREFIX}{link_token}",
+            "hours": int(staff_notify.LINK_TTL.total_seconds() // 3600),
+            "page_title": f"Уведомления: {employee.name}",
+        },
+    )
+
+
+@router.post("/{employee_id}/telegram-unlink")
+async def telegram_unlink(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_employees")),
+):
+    employee = db.get(Employee, employee_id)
+    if employee is None:
+        return redirect("/admin/employees", err="Сотрудник не найден")
+    employee.telegram_user_id = None
+    db.commit()
+    log_action(
+        db, actor=user.login, action="employee.telegram_unlink", entity_type="employee",
+        entity_id=employee_id, user_id=user.id,
+    )
+    return redirect(f"/admin/employees/{employee_id}/edit", ok="Telegram отвязан — уведомления больше не приходят")
 
 
 @router.post("/{employee_id}/archive")

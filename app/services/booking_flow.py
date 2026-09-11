@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.models.booking import Booking
 from app.models.enums import BOOKED, CANCELLED
 from app.models.service import Service
-from app.services import booking_service, calendar_service
+from app.services import booking_service, calendar_service, staff_notify
 from app.services.audit_service import log_action
 from app.services.schedule_service import free_slots, local_tz
 
@@ -144,6 +144,7 @@ def create(
             "google_event": booking.google_event_id,
         },
     )
+    staff_notify.enqueue(db, booking, "created", actor=actor)
     return booking, google
 
 
@@ -177,6 +178,7 @@ def reschedule(
         user_id=user_id,
         details={"from": old_start.isoformat(), "to": booking.start_at.isoformat()},
     )
+    staff_notify.enqueue(db, booking, "rescheduled", actor=actor, previous_start=old_start)
     return booking, google
 
 
@@ -199,6 +201,7 @@ def cancel(
         user_id=user_id,
         details={"start": booking.start_at.isoformat()},
     )
+    staff_notify.enqueue(db, booking, "cancelled", actor=actor)
     return booking, google
 
 
@@ -260,6 +263,8 @@ def update(
     before = _snapshot(booking)
     employee_changed = employee_id != booking.employee_id
     active = booking.status == BOOKED
+    old_employee = booking.employee
+    old_start = booking.start_at
 
     busy: list[tuple[datetime, datetime]] = []
     if active:
@@ -311,6 +316,12 @@ def update(
         user_id=user_id,
         details={k: {"было": before[k], "стало": v} for k, v in after.items() if before[k] != v},
     )
+    if active and employee_changed:
+        staff_notify.enqueue(db, booking, "moved_out", actor=actor, employee=old_employee)
+        staff_notify.enqueue(db, booking, "created", actor=actor)
+    elif active and after != before:
+        moved = after["start"] != before["start"]
+        staff_notify.enqueue(db, booking, "updated", actor=actor, previous_start=old_start if moved else None)
     return booking, google
 
 
@@ -351,6 +362,7 @@ def restore(
         user_id=user_id,
         details={"start": booking.start_at.isoformat(), "google_event": booking.google_event_id},
     )
+    staff_notify.enqueue(db, booking, "restored", actor=actor)
     return booking, google
 
 

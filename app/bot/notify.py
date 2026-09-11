@@ -8,12 +8,12 @@ getUpdates, а sendMessage можно отправлять откуда угод
 import logging
 from datetime import datetime, timezone
 
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 
 from app.bot import texts
 from app.bot.db import run_db
 from app.bot.keyboards.menu import booking_actions
-from app.services import reminder_service
+from app.services import reminder_service, staff_notify
 from app.services.schedule_service import local_tz
 
 logger = logging.getLogger(__name__)
@@ -52,4 +52,24 @@ async def send_due_reminders(bot, now: datetime | None = None) -> int:
             continue
         if await run_db(reminder_service.mark_sent, item["booking_id"], item["kind"]):
             sent += 1
+    return sent
+
+
+async def send_outbox(bot) -> int:
+    """Уведомления сотрудникам из очереди. Возвращает число доставленных."""
+    sent = 0
+    for item in await run_db(staff_notify.pending):
+        try:
+            await bot.send_message(item["chat_id"], item["text"])
+        except (TelegramForbiddenError, TelegramBadRequest):
+            # Сотрудник заблокировал бота или чата нет — повторять бессмысленно
+            logger.info("Уведомление #%s не доставить: чат недоступен", item["id"])
+            await run_db(staff_notify.mark_failed, item["id"], final=True)
+            continue
+        except TelegramAPIError as exc:
+            logger.warning("Уведомление #%s не ушло (%s), повторю позже", item["id"], type(exc).__name__)
+            await run_db(staff_notify.mark_failed, item["id"])
+            continue
+        await run_db(staff_notify.mark_sent, item["id"])
+        sent += 1
     return sent

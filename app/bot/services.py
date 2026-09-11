@@ -23,7 +23,7 @@ from app.models.schedule import Schedule
 from app.models.schedule_exception import ScheduleException
 from app.models.service import Service
 from app.services import booking_flow, booking_service
-from app.services.app_settings_service import COMPANY, get_setting
+from app.services.app_settings_service import BOOKING, COMPANY, get_setting
 from app.services.schedule_service import local_now, local_tz
 
 # Насколько вперёд клиенту разрешено записываться
@@ -286,7 +286,10 @@ def cancel(db: Session, booking_id: int, client_id: int) -> dict:
     return _card(booking)
 
 
-def horizon() -> tuple[date, date]:
-    """Границы, внутри которых клиент может выбирать дату."""
+def horizon(db: Session | None = None) -> tuple[date, date]:
+    """Границы, внутри которых клиент может выбирать дату. С db — горизонт из настроек."""
     today = local_now().date()
-    return today, today + timedelta(days=BOOKING_HORIZON_DAYS)
+    days = BOOKING_HORIZON_DAYS
+    if db is not None:
+        days = int(get_setting(db, BOOKING).get("horizon_days") or BOOKING_HORIZON_DAYS)
+    return today, today + timedelta(days=days)

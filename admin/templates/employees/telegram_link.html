@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">{{ page_title }}</h1>
+
+<div class="bg-white rounded-xl shadow p-6 space-y-4 text-sm max-w-2xl">
+  <p>Откройте эту ссылку в Telegram <b>сотрудника {{ employee.name }}</b> и нажмите «Старт» — бот запомнит его и будет присылать уведомления о новых записях, переносах и отменах.</p>
+  <div class="flex gap-2 items-center">
+    <input id="link" value="{{ link }}" readonly class="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs bg-slate-50">
+    <button type="button" class="border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50"
+            onclick="navigator.clipboard.writeText(document.getElementById('link').value); this.textContent = 'Скопировано'">Копировать</button>
+  </div>
+  <p class="text-xs text-slate-500">Ссылка одноразовая и действует {{ hours }} часа. Если откроет не тот человек — нажмите «Отвязать» в карточке сотрудника и создайте новую.</p>
+  <a href="/admin/employees/{{ employee.id }}/edit" class="inline-block text-sky-600 hover:underline">← К карточке сотрудника</a>
+</div>
+{% endblock %}

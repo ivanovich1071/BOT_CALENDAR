@@ -36,6 +36,27 @@
   <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
 </form>
 
+<form method="post" action="/admin/settings/booking" class="bg-white rounded-xl shadow p-6 max-w-2xl mb-8 space-y-4 text-sm">
+  <div>
+    <h2 class="font-semibold">Запись</h2>
+    <p class="text-xs text-slate-500 mt-1">
+      Шаг сетки — через сколько минут идут слоты. «Запись вперёд» — сколько дней открыто в календаре бота.
+      «Минимум до начала» — нельзя записаться на время, до которого осталось меньше.
+    </p>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    {% for field, key, label, low, high in booking_fields %}
+    <label class="block"><span class="text-slate-600">{{ label }}</span>
+      <input name="{{ field }}" type="number" min="{{ low }}" max="{{ high }}" value="{{ booking.get(key) }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    {% endfor %}
+    <label class="block"><span class="text-slate-600">Синхронизация Google, минут</span>
+      <input name="sync_minutes" type="number" min="1" max="120" value="{{ sync_minutes }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+  </div>
+  <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+</form>
+
 <div class="bg-white rounded-xl shadow p-6 max-w-2xl space-y-2 text-sm">
   <h2 class="font-semibold mb-2">Система</h2>
   <div class="flex justify-between border-b border-slate-100 py-2"><span class="text-slate-500">Окружение</span><span>{{ app_env }}</span></div>

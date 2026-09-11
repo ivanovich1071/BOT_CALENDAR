@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from admin.flash import redirect
+from admin.scope import FOREIGN, client_visible, forbidden, own_clients_clause, own_employee_id
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
 from app.db.database import get_db
@@ -19,7 +20,7 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/admin/clients")
 
 
-def _forbidden(request: Request, user):
+def _no_rights(request: Request, user):
     return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
 
 
@@ -32,13 +33,16 @@ async def list_clients(
     db: Session = Depends(get_db),
 ):
     if not user.has_permission("view_clients"):
-        return _forbidden(request, user)
+        return _no_rights(request, user)
     query = (
         select(Client)
         .where(Client.archived_at.is_not(None) if archived else Client.archived_at.is_(None))
         .order_by(Client.created_at.desc())
         .limit(300)
     )
+    own = own_employee_id(db, user)
+    if own is not None:
+        query = query.where(own_clients_clause(own))
     if q.strip():
         like = f"%{q.strip()}%"
         query = query.where(
@@ -71,16 +75,22 @@ async def client_card(
     db: Session = Depends(get_db),
 ):
     if not user.has_permission("view_clients"):
-        return _forbidden(request, user)
+        return _no_rights(request, user)
     client = db.get(Client, client_id)
     if client is None:
         return redirect("/admin/clients", err="Клиент не найден")
-    bookings = db.scalars(
+    if not client_visible(db, user, client_id):
+        return forbidden(request, user)
+    bookings_q = (
         select(Booking)
         .options(selectinload(Booking.employee), selectinload(Booking.service))
         .where(Booking.client_id == client_id)
         .order_by(Booking.start_at.desc())
-    ).all()
+    )
+    own = own_employee_id(db, user)
+    if own is not None:
+        bookings_q = bookings_q.where(Booking.employee_id == own)
+    bookings = db.scalars(bookings_q).all()
     dialog_messages = db.scalar(select(func.count(AiMessage.id)).where(AiMessage.client_id == client_id)) or 0
     return render(
         request,
@@ -111,6 +121,8 @@ async def update_client(
     client = db.get(Client, client_id)
     if client is None:
         return redirect("/admin/clients", err="Клиент не найден")
+    if not client_visible(db, user, client_id):
+        return redirect("/admin/clients", err=FOREIGN)
     before = {"name": client.name, "phone": client.phone, "notes": client.notes}
     client.name = name.strip() or None
     client.phone = phone.strip() or None
@@ -135,6 +147,8 @@ async def archive_client(
     client = db.get(Client, client_id)
     if client is None:
         return redirect("/admin/clients", err="Клиент не найден")
+    if not client_visible(db, user, client_id):
+        return redirect("/admin/clients", err=FOREIGN)
     client.archived_at = datetime.now(timezone.utc)
     db.commit()
     log_action(db, actor=user.login, action="client.archive", entity_type="client", entity_id=client_id, user_id=user.id)
@@ -150,6 +164,8 @@ async def restore_client(
     client = db.get(Client, client_id)
     if client is None:
         return redirect("/admin/clients", err="Клиент не найден")
+    if not client_visible(db, user, client_id):
+        return redirect("/admin/clients", err=FOREIGN)
     client.archived_at = None
     db.commit()
     log_action(db, actor=user.login, action="client.restore", entity_type="client", entity_id=client_id, user_id=user.id)

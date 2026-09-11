@@ -191,6 +191,20 @@ async def test_приветствие_и_информация_из_профил�
 
 
 @pytest.mark.asyncio
+async def test_сотрудник_привязывает_telegram_по_ссылке(tg, db, employee):
+    from app.services import staff_notify
+
+    token = staff_notify.create_link_token(db, employee.id)
+    _bot, _dp, session = tg
+
+    await _feed(tg, _message(f"/start {staff_notify.PAYLOAD_PREFIX}{token}"))
+
+    assert texts.STAFF_LINKED.format(name="Иванов") in session.sent()
+    db.refresh(employee)
+    assert employee.telegram_user_id == TG_USER_ID
+
+
+@pytest.mark.asyncio
 async def test_запись_без_услуг_не_обрывается_молча(tg, db):
     _bot, _dp, session = tg
     await _feed(tg, _message(texts.BTN_BOOK))

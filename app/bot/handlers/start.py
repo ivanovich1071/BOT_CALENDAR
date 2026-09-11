@@ -1,7 +1,9 @@
 """Старт, профиль и справка."""
 
+from html import escape
+
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -9,8 +11,19 @@ from app.bot import services, texts
 from app.bot.db import run_db
 from app.bot.deps import current_client, display_name
 from app.bot.keyboards.menu import ask_phone, main_menu
+from app.services import staff_notify
 
 router = Router(name="start")
+
+
+# Раньше обычного /start: ссылка привязки Telegram сотрудника из админки
+@router.message(CommandStart(deep_link=True, magic=F.args.startswith(staff_notify.PAYLOAD_PREFIX)))
+async def start_staff(message: Message, command: CommandObject, state: FSMContext) -> None:
+    await state.clear()
+    token = command.args[len(staff_notify.PAYLOAD_PREFIX):]
+    name = await run_db(staff_notify.consume_link_token, token, message.from_user.id)
+    text = texts.STAFF_LINKED.format(name=escape(name, quote=False)) if name else texts.STAFF_LINK_EXPIRED
+    await message.answer(text, reply_markup=main_menu())
 
 
 @router.message(CommandStart())

@@ -142,7 +142,7 @@ def find_slots(db: Session, ctx: ToolContext, args: dict) -> dict:
         if not employees:
             return {"error": "Этот специалист не проводит эту услугу — выбери из списка услуг."}
 
-    today, last = services.horizon()
+    today, last = services.horizon(db)
     start = max(_date(args.get("date_from")) or today, today)
     end = _date(args.get("date_to")) or start
     end = min(max(end, start), start + timedelta(days=MAX_RANGE_DAYS - 1), last)
@@ -195,7 +195,7 @@ def propose_booking(db: Session, ctx: ToolContext, args: dict) -> dict:
     if employee is None:
         return {"ok": False, "error": "Этот специалист не проводит эту услугу."}
     day = _date(args.get("date"))
-    today, last = services.horizon()
+    today, last = services.horizon(db)
     if day is None or not today <= day <= last:
         return {"ok": False, "error": "Дата вне периода записи."}
     slot = str(args.get("time") or "")[:5]

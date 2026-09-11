@@ -8,8 +8,17 @@ from app.config.settings import get_settings
 from app.db.database import get_db
 from app.models.user import User
 from app.services import reminder_service
-from app.services.app_settings_service import REMINDERS, get_setting, set_setting
+from admin.diff import changed_fields
+from app.services.app_settings_service import BOOKING, GOOGLE_SYNC, REMINDERS, get_setting, set_setting
 from app.services.audit_service import log_action
+
+# (поле формы, ключ настройки, подпись, минимум, максимум)
+BOOKING_FIELDS = (
+    ("slot_step", "slot_step_minutes", "Шаг сетки, минут", 5, 240),
+    ("horizon_days", "horizon_days", "Запись вперёд, дней", 1, 365),
+    ("min_lead", "min_lead_minutes", "Минимум до начала, минут", 0, 10080),
+)
+SYNC_LIMITS = (1, 120)
 
 router = APIRouter(prefix="/admin/settings")
 
@@ -53,9 +62,47 @@ async def settings_page(
             "timezone": s.timezone,
             "reminders_enabled": bool(reminders.get("enabled", True)),
             "reminder_hours": ", ".join(str(h) for h in reminders.get("hours_before", [])),
+            "booking": get_setting(db, BOOKING),
+            "booking_fields": BOOKING_FIELDS,
+            "sync_minutes": get_setting(db, GOOGLE_SYNC).get("interval_minutes", 10),
             "page_title": "Настройки",
         },
     )
+
+
+@router.post("/booking")
+async def save_booking_settings(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("manage_settings")),
+):
+    form = await request.form()
+    value = {}
+    try:
+        for field, key, label, low, high in BOOKING_FIELDS:
+            number = int(str(form.get(field) or "").strip())
+            if not low <= number <= high:
+                raise ValueError(f"{label}: от {low} до {high}")
+            value[key] = number
+        sync = int(str(form.get("sync_minutes") or "").strip())
+        if not SYNC_LIMITS[0] <= sync <= SYNC_LIMITS[1]:
+            raise ValueError(f"Синхронизация Google: от {SYNC_LIMITS[0]} до {SYNC_LIMITS[1]} минут")
+    except ValueError as exc:
+        message = str(exc) if "от " in str(exc) else "Введите целые числа"
+        return redirect("/admin/settings", err=message)
+
+    before = {**get_setting(db, BOOKING), "sync_minutes": get_setting(db, GOOGLE_SYNC).get("interval_minutes")}
+    set_setting(db, BOOKING, value)
+    set_setting(db, GOOGLE_SYNC, {"interval_minutes": sync})
+    log_action(
+        db, actor=user.login, action="settings.booking", entity_type="app_setting", entity_id=BOOKING,
+        details=changed_fields(before, {**value, "sync_minutes": sync}), user_id=user.id,
+    )
+    from app.scheduler import reschedule_google_sync
+
+    applied = reschedule_google_sync(sync)
+    note = "" if applied else " — интервал синхронизации применится после перезапуска"
+    return redirect("/admin/settings", ok="Настройки записи сохранены" + note)
 
 
 @router.post("/reminders")
