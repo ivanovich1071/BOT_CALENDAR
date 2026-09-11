@@ -88,6 +88,21 @@ async def reminders_job() -> None:
         await asyncio.to_thread(_release, lock)
 
 
+def ai_history_job() -> None:
+    """Диалоги с ИИ-консультантом хранятся ограниченное время."""
+    from app.ai.agent import purge_old_messages
+
+    db = SessionLocal()
+    try:
+        removed = purge_old_messages(db)
+        if removed:
+            logger.info("Удалено старых реплик диалогов — %s", removed)
+    except Exception:  # noqa: BLE001
+        logger.exception("Очистка диалогов сорвалась")
+    finally:
+        db.close()
+
+
 def sync_interval_minutes() -> int:
     db = SessionLocal()
     try:
@@ -116,6 +131,15 @@ def start_scheduler() -> AsyncIOScheduler:
         "interval",
         minutes=REMINDERS_INTERVAL_MINUTES,
         id="reminders",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        ai_history_job,
+        "interval",
+        hours=24,
+        id="ai_history",
         max_instances=1,
         coalesce=True,
         replace_existing=True,

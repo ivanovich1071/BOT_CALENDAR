@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">{{ client.name or "Без имени" }}</h1>
+    <div class="text-sm text-slate-500">
+      {% if client.telegram_username %}@{{ client.telegram_username }} · {% endif %}{{ client.phone or "телефон не указан" }}
+    </div>
+  </div>
+  <a href="/admin/dialogs" class="text-sky-600 hover:underline text-sm">← Все диалоги</a>
+</div>
+
+{% if bookings %}
+<div class="bg-white rounded-xl shadow p-4 mb-6 text-sm">
+  <div class="font-semibold mb-2">Записи через консультанта</div>
+  {% for b in bookings %}
+  <div class="py-1">{{ b.start_at|localdt }} · {{ b.employee.name }} · {{ b.service.name }} · {{ status_labels.get(b.status, b.status) }}{% if b.notes %} — <span class="text-slate-500">{{ b.notes }}</span>{% endif %}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="space-y-3 max-w-3xl">
+  {% for m in messages %}
+    {% if m.role == "tool" %}
+    <details class="ml-8 text-xs text-slate-500">
+      <summary class="cursor-pointer">⚙ {{ m.tool_name }} · {{ m.created_at|localtime }}</summary>
+      <pre class="mt-1 whitespace-pre-wrap bg-slate-50 border rounded p-2">{{ m.content }}</pre>
+    </details>
+    {% else %}
+    <div class="flex {{ 'justify-end' if m.role == 'user' else 'justify-start' }}">
+      <div class="rounded-xl px-4 py-2 text-sm max-w-xl whitespace-pre-wrap {{ 'bg-sky-100' if m.role == 'user' else 'bg-white shadow' }}">
+        <div class="text-xs text-slate-400 mb-1">{{ "Клиент" if m.role == "user" else "Консультант" }} · {{ m.created_at|localdt }}</div>{{ m.content }}</div>
+    </div>
+    {% endif %}
+  {% else %}
+    <div class="text-slate-500 text-sm">Сообщений нет.</div>
+  {% endfor %}
+</div>
+{% endblock %}

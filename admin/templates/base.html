@@ -13,20 +13,26 @@
   <aside class="w-60 bg-slate-900 text-slate-200 flex flex-col shrink-0">
     <div class="px-5 py-5 text-lg font-bold text-white border-b border-slate-700">📅 Booking Platform</div>
     <nav class="flex-1 px-3 py-4 space-y-1 text-sm">
+      {# Пункт виден, если есть хотя бы одно из прав; пустой список — всем #}
       {% set nav_items = [
-        ("dashboard", "/admin/", "Панель"),
-        ("bookings", "/admin/bookings", "Записи"),
-        ("schedule", "/admin/schedule", "Расписание"),
-        ("calendars", "/admin/calendars", "Календари"),
-        ("employees", "/admin/employees", "Сотрудники"),
-        ("services", "/admin/services", "Услуги"),
-        ("clients", "/admin/clients", "Клиенты"),
-        ("settings", "/admin/settings", "Настройки"),
-        ("audit", "/admin/audit", "Аудит"),
+        ("dashboard", "/admin/", "Панель", []),
+        ("bookings", "/admin/bookings", "Записи", ["view_calendar"]),
+        ("schedule", "/admin/schedule", "Расписание", ["manage_schedule", "view_calendar"]),
+        ("calendars", "/admin/calendars", "Календари", ["view_calendar"]),
+        ("employees", "/admin/employees", "Сотрудники", ["manage_employees", "view_calendar"]),
+        ("services", "/admin/services", "Услуги", ["manage_services", "create_booking"]),
+        ("clients", "/admin/clients", "Клиенты", ["view_clients"]),
+        ("dialogs", "/admin/dialogs", "Диалоги", ["view_clients"]),
+        ("company", "/admin/company", "Компания", ["manage_settings"]),
+        ("knowledge", "/admin/knowledge", "База знаний", ["manage_settings"]),
+        ("settings", "/admin/settings", "Настройки", ["manage_settings"]),
+        ("audit", "/admin/audit", "Аудит", ["view_audit"]),
       ] %}
-      {% for key, href, label in nav_items %}
+      {% for key, href, label, perms in nav_items %}
+      {% if not perms or perms|select("in", user.effective_permissions())|list %}
       <a href="{{ href }}" class="block px-3 py-2 rounded-md transition
          {{ 'bg-slate-700 text-white font-medium' if nav == key else 'hover:bg-slate-800' }}">{{ label }}</a>
+      {% endif %}
       {% endfor %}
     </nav>
     <div class="px-5 py-4 border-t border-slate-700 text-xs">

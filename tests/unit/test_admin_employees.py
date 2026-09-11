@@ -1,24 +1,6 @@
 """Карточка сотрудника: статус без логина и сброс пароля."""
 
-import pytest
-from fastapi.testclient import TestClient
-
-from app.api.dependencies import get_current_user
-from app.db.database import get_db
-from app.main import app
 from app.models.user import User
-
-
-@pytest.fixture
-def admin_client(db):
-    admin = User(login="admin", password_hash="x", role="admin", permissions=[], is_active=True)
-    db.add(admin)
-    db.commit()
-    app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_db] = lambda: db
-    # Без with: lifespan не запускается, планировщик не стартует
-    yield TestClient(app)
-    app.dependency_overrides.clear()
 
 
 def test_галочка_активности_есть_у_сотрудника_без_логина(admin_client, employee):

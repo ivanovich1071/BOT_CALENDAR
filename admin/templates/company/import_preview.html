@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Загрузка пакета компании</h1>
+<p class="text-sm text-slate-500 mb-6">Пакет прошёл проверку. Вот что изменится — записи, клиенты, логины и подключения Google останутся как есть.</p>
+
+<div class="bg-white rounded-xl shadow p-6 max-w-3xl text-sm">
+  <ul class="space-y-2">
+    {% for line in plan_lines %}<li class="border-b border-slate-100 pb-2 last:border-0">{{ line }}</li>{% endfor %}
+  </ul>
+  <form method="post" action="/admin/company/import/apply" class="flex gap-3 mt-6">
+    <textarea name="pack_json" class="hidden">{{ raw }}</textarea>
+    <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Применить</button>
+    <a href="/admin/company" class="px-5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Отмена</a>
+  </form>
+</div>
+{% endblock %}

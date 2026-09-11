@@ -11,8 +11,11 @@ from admin.routes import (
     bookings,
     calendars,
     clients,
+    company,
     dashboard,
+    dialogs,
     employees,
+    knowledge,
     schedule,
     services,
     settings_page,
@@ -59,6 +62,9 @@ app.include_router(calendars.router)
 app.include_router(employees.router)
 app.include_router(services.router)
 app.include_router(clients.router)
+app.include_router(dialogs.router)
+app.include_router(company.router)
+app.include_router(knowledge.router)
 app.include_router(settings_page.router)
 app.include_router(audit.router)
 

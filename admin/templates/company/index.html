@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Компания</h1>
+<p class="text-sm text-slate-500 mb-6 max-w-3xl">
+  От имени этой компании говорит бот: приветствие, «Информация» и ответы ИИ-консультанта.
+  Факты об услугах, ценах и людях консультант берёт из
+  <a href="/admin/knowledge" class="text-sky-600 hover:underline">базы знаний</a>.
+</p>
+
+<form method="post" action="/admin/company/profile" class="bg-white rounded-xl shadow p-6 mb-6 space-y-4 text-sm max-w-3xl">
+  <h2 class="font-semibold">Профиль</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for f in ["name", "tagline", "phone", "telegram", "website", "email", "currency", "assistant_name"] %}
+    <label class="block"><span class="text-slate-600">{{ labels[f] }}{% if f == "name" %} *{% endif %}</span>
+      <input name="{{ f }}" value="{{ company.get(f) or '' }}" {{ 'required' if f == 'name' }}
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    {% endfor %}
+  </div>
+  {% for f, rows, hint in [
+    ("description", 3, "Коротко о компании — видно в «Информации» и в описании бота"),
+    ("greeting", 4, "Ответ на /start. {name} заменится именем клиента"),
+    ("ai_rules", 6, "Тон и особые правила для ИИ-консультанта — дополняют общие правила")
+  ] %}
+  <label class="block"><span class="text-slate-600">{{ labels[f] }}</span>
+    <textarea name="{{ f }}" rows="{{ rows }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">{{ company.get(f) or '' }}</textarea>
+    <span class="text-xs text-slate-500">{{ hint }}</span></label>
+  {% endfor %}
+  <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить профиль</button>
+</form>
+
+<form method="post" action="/admin/company/ai" class="bg-white rounded-xl shadow p-6 mb-6 space-y-4 text-sm max-w-3xl">
+  <div>
+    <h2 class="font-semibold">ИИ-консультант</h2>
+    <p class="text-xs text-slate-500 mt-1">
+      Пустые поля берутся из .env: модель <code>{{ env_model }}</code>, температура {{ env_temperature }}.
+      База знаний: {{ articles_count }} статей, {{ kb_chars }} из {{ kb_limit }} символов.
+    </p>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+    <label class="block md:col-span-2"><span class="text-slate-600">Модель OpenRouter</span>
+      <input name="model" value="{{ ai.get('model') or '' }}" placeholder="{{ env_model }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Температура</span>
+      <input name="temperature" value="{{ ai.get('temperature') if ai.get('temperature') is not none else '' }}" placeholder="{{ env_temperature }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Сообщений в час</span>
+      <input name="hourly_limit" type="number" min="1" max="500" value="{{ ai.get('hourly_limit') }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Реплик в памяти</span>
+      <input name="history_messages" type="number" min="0" max="40" value="{{ ai.get('history_messages') }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+  </div>
+  <label class="block w-48"><span class="text-slate-600">Память разговора, часов</span>
+    <input name="history_hours" type="number" min="1" max="72" value="{{ ai.get('history_hours') }}"
+           class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+  <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+</form>
+
+<div class="bg-white rounded-xl shadow p-6 mb-6 space-y-3 text-sm max-w-3xl">
+  <h2 class="font-semibold">Пакет компании</h2>
+  <p class="text-xs text-slate-500">
+    Профиль, база знаний, услуги, сотрудники и расписания одним JSON-файлом — чтобы показать
+    демо под другую компанию и вернуть свою. При загрузке услуги и сотрудники сопоставляются
+    по имени, всё, чего нет в пакете, уходит в архив. Записи, клиенты, логины и подключения
+    Google не меняются. Перед применением покажу, что изменится.
+  </p>
+  <div class="flex gap-4 items-center flex-wrap">
+    <a href="/admin/company/export" class="border border-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50">Скачать пакет</a>
+    <form method="post" action="/admin/company/import" enctype="multipart/form-data" class="flex gap-2 items-center">
+      <input type="file" name="file" accept=".json,application/json" required class="text-sm">
+      <button class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700">Проверить пакет</button>
+    </form>
+  </div>
+</div>
+
+<form method="post" action="/admin/company/telegram" class="bg-white rounded-xl shadow p-6 space-y-3 text-sm max-w-3xl"
+      onsubmit="return confirm('Заменить имя и описание бота в Telegram данными профиля?')">
+  <h2 class="font-semibold">Профиль бота в Telegram</h2>
+  <p class="text-xs text-slate-500">
+    Имя, короткое описание и описание, которые клиент видит до нажатия «Старт», берутся из
+    профиля: название, слоган и описание. Меняются публично — только по этой кнопке.
+  </p>
+  <button class="border border-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50" {{ 'disabled' if not bot_ready }}>Применить в Telegram</button>
+</form>
+{% endblock %}

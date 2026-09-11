@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-2">
+  <h1 class="text-2xl font-bold">База знаний</h1>
+  <a href="/admin/knowledge/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Статья</a>
+</div>
+<p class="text-sm text-slate-500 mb-6 max-w-3xl">
+  Активные статьи целиком уходят ИИ-консультанту: только отсюда он берёт факты об услугах,
+  ценах, людях и правилах. Чего здесь нет — консультант не придумывает и предлагает уточнить
+  у специалиста. Правка вступает в силу со следующего сообщения клиента.
+</p>
+
+{% set percent = (total * 100 // limit) if limit else 0 %}
+<div class="mb-4 text-sm {{ 'text-rose-600' if total > limit else 'text-slate-600' }}">
+  Объём: {{ total }} из {{ limit }} символов ({{ percent }}%){% if total > limit %} — лишнее будет обрезано, сократите статьи{% endif %}
+</div>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3 w-16">№</th><th class="px-4 py-3">Статья</th><th class="px-4 py-3">Символов</th>
+      <th class="px-4 py-3">Статус</th><th class="px-4 py-3">Обновлена</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for a in items %}
+      <tr class="border-b last:border-0 align-top">
+        <td class="px-4 py-3 text-slate-500">{{ a.sort_order }}</td>
+        <td class="px-4 py-3">
+          <div class="font-medium">{{ a.title }}</div>
+          <div class="text-slate-500">{{ a.body[:140] }}{% if a.body|length > 140 %}…{% endif %}</div>
+        </td>
+        <td class="px-4 py-3">{{ a.body|length }}</td>
+        <td class="px-4 py-3">{% if a.is_active %}<span class="text-emerald-600">● в работе</span>{% else %}<span class="text-slate-400">● выключена</span>{% endif %}</td>
+        <td class="px-4 py-3 whitespace-nowrap">{{ a.updated_at|localdt }}</td>
+        <td class="px-4 py-3 text-right space-x-3 whitespace-nowrap">
+          <a href="/admin/knowledge/{{ a.id }}/edit" class="text-sky-600 hover:underline">Изменить</a>
+          <form method="post" action="/admin/knowledge/{{ a.id }}/delete" class="inline"
+                onsubmit="return confirm('Удалить статью «{{ a.title }}»?')">
+            <button class="text-rose-600 hover:underline">Удалить</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="6">Статей пока нет — консультант будет знать только профиль компании и услуги.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Диалоги</h1>
+<p class="text-sm text-slate-500 mb-6">Переписка клиентов с ИИ-консультантом. Хранится {{ retention_days }} дней, затем удаляется автоматически.</p>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Клиент</th><th class="px-4 py-3">Telegram</th><th class="px-4 py-3">Сообщений</th><th class="px-4 py-3">Последнее</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-3 font-medium">{{ item.client.name or "Без имени" }}</td>
+        <td class="px-4 py-3">{% if item.client.telegram_username %}@{{ item.client.telegram_username }}{% else %}—{% endif %}</td>
+        <td class="px-4 py-3">{{ item.count }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">{{ item.last|localdt }}</td>
+        <td class="px-4 py-3 text-right"><a href="/admin/dialogs/{{ item.client.id }}" class="text-sky-600 hover:underline">Открыть</a></td>
+      </tr>
+    {% else %}
+      <tr><td class="px-4 py-6 text-slate-500" colspan="5">Диалогов пока нет — они появятся, когда клиенты начнут писать боту.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
