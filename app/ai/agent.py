@@ -89,8 +89,12 @@ def purge_old_messages(db: Session, days: int = HISTORY_RETENTION_DAYS) -> int:
     return result.rowcount or 0
 
 
-async def respond(client_id: int, text: str) -> AgentReply:
-    """Ответ консультанта на сообщение клиента. Сбой модели — failed=True, без исключений."""
+async def respond(client_id: int, text: str, button_context: str | None = None) -> AgentReply:
+    """Ответ консультанта на сообщение клиента. Сбой модели — failed=True, без исключений.
+
+    button_context — что клиент только что выбрал кнопками записи: без этого «на 17 можно?»
+    модель понимает как «сегодня», хотя в меню был выбран другой день.
+    """
     context = await run_db(load_context, client_id)
     config = context["config"]
     system = build_system_prompt(
@@ -101,6 +105,9 @@ async def respond(client_id: int, text: str) -> AgentReply:
         today=local_now().date(),
     )
     user_text = text.strip()[:MAX_MESSAGE_CHARS]
+    if button_context:
+        # Пометка сохраняется в истории: следующие реплики тоже про этот день
+        user_text = f"[Выбор кнопками: {button_context}]\n{user_text}"
     messages = [{"role": "system", "content": system}, *context["history"], {"role": "user", "content": user_text}]
     await run_db(save_message, client_id, "user", user_text)
 

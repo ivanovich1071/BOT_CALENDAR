@@ -435,6 +435,34 @@ async def test_история_уходит_в_следующий_запрос(tg
     assert second[1]["content"] == "здравствуйте" and second[-1]["content"] == "а сколько длится?"
 
 
+def test_выбор_кнопками_строкой_для_консультанта():
+    from app.bot.handlers.ai import button_context
+
+    assert button_context({}) is None
+    assert button_context(
+        {"service_name": "Встреча", "employee_name": "Вероника", "day": "2026-09-17", "slot": "16:30"}
+    ) == "услуга «Встреча», специалист Вероника, день 2026-09-17 — 17 сентября, четверг, время 16:30"
+
+
+@pytest.mark.asyncio
+async def test_текст_после_выбора_кнопками_знает_выбранное(tg, db, employee, service, workday, fake_ai):
+    """Живая проверка 11.09: «на 17 ч можно?» после выбора в меню модель поняла как «сегодня»."""
+    fake_ai.call(
+        "propose_booking", service_id=service.id, employee_id=employee.id,
+        date=workday.isoformat(), time="11:00", summary="",
+    )
+    fake_ai.say("Нажмите «Записаться».")
+    await _feed(tg, _message("запишите на консультацию"))
+    await _feed(tg, _callback(AiBookCB(action="other").pack()))
+    fake_ai.say("На какой день?")
+
+    await _feed(tg, _message("на 17 ч можно?"))
+
+    last = fake_ai.requests[-1][-1]
+    assert last["role"] == "user"
+    assert last["content"] == "[Выбор кнопками: услуга «Консультация», специалист Иванов]\nна 17 ч можно?"
+
+
 @pytest.mark.asyncio
 async def test_диалог_ведёт_к_карточке_и_записи(tg, db, employee, service, workday, fake_ai):
     """Модель ищет время, предлагает карточку; запись создаёт только нажатие «Записаться»."""

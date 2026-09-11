@@ -84,6 +84,26 @@ def import_company(path: str, yes: bool) -> None:
         db.close()
 
 
+def import_knowledge(path: str, yes: bool) -> None:
+    """Обновляет только базу знаний из пакета: услуги и сотрудники из админки остаются как есть."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        pack = company_pack.validate_pack(raw)
+    except (OSError, json.JSONDecodeError, company_pack.PackError) as e:
+        print(f"Пакет не загружен: {e}")
+        sys.exit(1)
+    db = SessionLocal()
+    try:
+        print(f"База знаний «{pack['company']['name']}»: статей в пакете {len(pack['knowledge'])}, текущие будут заменены")
+        if not _confirm("Заменить базу знаний?", yes):
+            print("Отменено.")
+            return
+        count = company_pack.import_knowledge(db, pack, actor="cli")
+        print(f"Готово: статей {count}.")
+    finally:
+        db.close()
+
+
 def export_company(path: str | None) -> None:
     db = SessionLocal()
     try:
@@ -157,6 +177,10 @@ def main() -> None:
     p_import.add_argument("path")
     p_import.add_argument("--yes", action="store_true", help="Не спрашивать подтверждение")
 
+    p_kb = sub.add_parser("import-knowledge", help="Заменить только базу знаний из пакета компании")
+    p_kb.add_argument("path")
+    p_kb.add_argument("--yes", action="store_true", help="Не спрашивать подтверждение")
+
     p_export = sub.add_parser("export-company", help="Выгрузить пакет компании (JSON)")
     p_export.add_argument("path", nargs="?")
 
@@ -171,6 +195,8 @@ def main() -> None:
         create_admin()
     elif args.cmd == "import-company":
         import_company(args.path, args.yes)
+    elif args.cmd == "import-knowledge":
+        import_knowledge(args.path, args.yes)
     elif args.cmd == "export-company":
         export_company(args.path)
     elif args.cmd == "demo-reset":

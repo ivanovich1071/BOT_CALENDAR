@@ -49,6 +49,22 @@ def _proposal_text(p: Proposal) -> str:
     )
 
 
+def button_context(data: dict) -> str | None:
+    """Незаконченный выбор в меню записи — строкой для консультанта, иначе None."""
+    parts = []
+    if data.get("service_name"):
+        parts.append(f"услуга «{data['service_name']}»")
+    if data.get("employee_name"):
+        parts.append(f"специалист {data['employee_name']}")
+    if data.get("day"):
+        with suppress(ValueError):
+            day = date.fromisoformat(data["day"])
+            parts.append(f"день {day.isoformat()} — {texts.human_date(day)}")
+    if data.get("slot"):
+        parts.append(f"время {data['slot']}")
+    return ", ".join(parts) or None
+
+
 @router.message(F.text, ~F.text.startswith("/"))
 async def free_text(message: Message, state: FSMContext) -> None:
     if not get_settings().openrouter_api_key:
@@ -60,12 +76,13 @@ async def free_text(message: Message, state: FSMContext) -> None:
         return
 
     client = await current_client(message.from_user)
-    # Текст посреди записи кнопками — клиент передумал: разговор ведёт консультант
+    # Текст посреди записи кнопками: разговор ведёт консультант, но выбранное в меню он знает
+    context = button_context(await state.get_data())
     await state.clear()
     with suppress(TelegramAPIError):
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
-    reply = await agent.respond(client["id"], message.text)
+    reply = await agent.respond(client["id"], message.text, button_context=context)
     if reply.failed:
         await message.answer(texts.AI_FAILED, reply_markup=main_menu())
         return

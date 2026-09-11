@@ -319,6 +319,24 @@ def plan_import(db: Session, pack: dict) -> ImportPlan:
     return plan
 
 
+def import_knowledge(db: Session, pack: dict, *, actor: str) -> int:
+    """Заменяет только базу знаний из пакета. Услуги, сотрудники и профиль, поправленные
+    в админке, не трогает — в отличие от import_pack. Возвращает число статей."""
+    try:
+        db.execute(delete(KnowledgeArticle))
+        for a in pack["knowledge"]:
+            db.add(KnowledgeArticle(**a))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    log_action(
+        db, actor=actor, action="knowledge.import", entity_type="knowledge",
+        details={"company": pack["company"]["name"], "articles": len(pack["knowledge"])},
+    )
+    return len(pack["knowledge"])
+
+
 def import_pack(db: Session, pack: dict, *, actor: str, user_id: int | None = None) -> ImportPlan:
     """Применяет проверенный пакет (результат validate_pack) одной транзакцией."""
     plan = plan_import(db, pack)

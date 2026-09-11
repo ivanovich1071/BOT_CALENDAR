@@ -4,6 +4,7 @@
 
 <div class="bg-white rounded-xl shadow p-6 space-y-4 text-sm max-w-2xl">
   <p>Откройте эту ссылку в Telegram <b>сотрудника {{ employee.name }}</b> и нажмите «Старт» — бот запомнит его и будет присылать уведомления о новых записях, переносах и отменах.</p>
+  <p>Привязка прошла, только если бот ответил <b>«✅ Готово. Уведомления о записях к специалисту…»</b>. Если чат с ботом уже был открыт и ответа нет — нажмите в чате «Старт» / «Перезапустить» или отправьте ссылку себе в «Избранное» и откройте оттуда.</p>
   <div class="flex gap-2 items-center">
     <input id="link" value="{{ link }}" readonly class="flex-1 border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs bg-slate-50">
     <button type="button" class="border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50"

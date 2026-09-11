@@ -51,6 +51,30 @@ def test_импорт_заводит_услуги_сотрудников_и_ба
     assert len(db.scalars(select(KnowledgeArticle)).all()) == len(_pack()["knowledge"])
 
 
+def test_база_знаний_обновляется_без_услуг_и_сотрудников(db):
+    """Исполнители и цены, поправленные в админке, не откатываются к пакету."""
+    company_pack.import_pack(db, _pack(), actor="test")
+    consult = db.scalar(select(Service).where(Service.name == "Консультация по внедрению ИИ"))
+    consult.price = 150
+    veronika = _employee(db, "Вероника Николаевна")
+    veronika.services = [*veronika.services, consult]
+    db.add(KnowledgeArticle(title="Лишняя", body="уйдёт"))
+    db.commit()
+
+    assert company_pack.import_knowledge(db, _pack(), actor="test") == len(_pack()["knowledge"])
+
+    db.expire_all()
+    assert consult.price == 150 and consult in _employee(db, "Вероника Николаевна").services
+    titles = [a.title for a in db.scalars(select(KnowledgeArticle))]
+    assert "Лишняя" not in titles and len(titles) == len(_pack()["knowledge"])
+
+
+def test_база_знаний_не_называет_исполнителей_услуг():
+    """Кто проводит услугу — только из админки: иначе ИИ путает людей, когда их поменяли."""
+    text = " ".join(a["body"] for a in _pack()["knowledge"])
+    assert "Проводит" not in text and "Проводят" not in text
+
+
 def test_существующий_сотрудник_сохраняет_логин_телефон_и_google(db):
     user = User(login="ivanovich", password_hash="x", role="employee", permissions=[], is_active=True)
     db.add(user)
