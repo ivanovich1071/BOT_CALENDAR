@@ -59,13 +59,13 @@ async def dashboard(
             )
         )
         or 0,
-        "clients": db.scalar(select(func.count(Client.id))) or 0,
+        "clients": db.scalar(select(func.count(Client.id)).where(Client.archived_at.is_(None))) or 0,
         "employees": db.scalar(
-            select(func.count(Employee.id)).where(Employee.is_active.is_(True))
+            select(func.count(Employee.id)).where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
         )
         or 0,
         "services": db.scalar(
-            select(func.count(Service.id)).where(Service.is_active.is_(True))
+            select(func.count(Service.id)).where(Service.is_active.is_(True), Service.archived_at.is_(None))
         )
         or 0,
     }

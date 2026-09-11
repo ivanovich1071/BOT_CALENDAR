@@ -1,54 +1,92 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">{{ page_title }}</h1>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">{{ page_title }}{% if employee and employee.archived_at %} <span class="text-sm font-normal text-slate-400">· в архиве</span>{% endif %}</h1>
+  <a href="/admin/employees" class="text-sky-600 hover:underline text-sm">← Все сотрудники</a>
+</div>
 
 <form method="post"
       action="{{ '/admin/employees/create' if not employee else '/admin/employees/' ~ employee.id ~ '/update' }}"
-      class="bg-white rounded-xl shadow p-6 space-y-5 max-w-2xl">
+      class="bg-white rounded-xl shadow p-6 space-y-5 text-sm max-w-3xl">
 
-  <div class="grid grid-cols-2 gap-4">
-    <label class="block text-sm">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <label class="block">
       <span class="text-slate-600">Имя *</span>
       <input name="name" required value="{{ employee.name if employee else '' }}"
              class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
     </label>
-    <label class="block text-sm">
+    <label class="block">
       <span class="text-slate-600">Телефон</span>
       <input name="phone" value="{{ employee.phone or '' if employee else '' }}"
              class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
     </label>
   </div>
 
-  <label class="block text-sm">
+  <label class="block">
     <span class="text-slate-600">Специализация</span>
     <input name="specialization" value="{{ employee.specialization or '' if employee else '' }}"
            class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
   </label>
 
-  {% if not employee %}
+  <label class="block">
+    <span class="text-slate-600">О специалисте</span>
+    <textarea name="bio" rows="3" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">{{ employee.bio or '' if employee else '' }}</textarea>
+    <span class="text-xs text-slate-500">Опыт, регалии, чем помогает — уходит ИИ-консультанту, когда он подбирает специалиста.</span>
+  </label>
+
   <fieldset class="border border-slate-200 rounded-lg p-4">
-    <legend class="text-sm font-medium px-1">Учётная запись для входа</legend>
-    <label class="flex items-center gap-2 text-sm mb-3">
-      <input type="checkbox" name="with_login" checked class="rounded"> Создать логин для входа в админку
-    </label>
-    <div class="grid grid-cols-2 gap-4">
-      <input name="login" placeholder="Логин" class="border border-slate-300 rounded-lg px-3 py-2">
-      <input name="password" type="text" placeholder="Временный пароль (мин. 8)" class="border border-slate-300 rounded-lg px-3 py-2">
+    <legend class="text-sm font-medium px-1">Услуги</legend>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {% for s in services %}
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="services" value="{{ s.id }}" {{ 'checked' if s.id in selected_services }} class="rounded"> {{ s.name }}
+      </label>
+      {% else %}
+      <p class="text-slate-500">Услуг пока нет.</p>
+      {% endfor %}
     </div>
+    <p class="text-xs text-slate-500 mt-2">Ничего не отмечено — сотрудник проводит все услуги.</p>
+  </fieldset>
+
+  {% if employee %}
+  <label class="flex items-center gap-2">
+    <input type="checkbox" name="is_active" {{ 'checked' if employee.is_active }} class="rounded">
+    Активен {% if linked_user %}(виден в боте, может входить в админку){% else %}(виден в боте, к нему можно записаться){% endif %}
+  </label>
+  {% if employee.telegram_user_id %}
+  <div class="text-xs text-slate-500">Telegram для уведомлений привязан (ID {{ employee.telegram_user_id }}).</div>
+  {% endif %}
+  {% endif %}
+
+  {% if not linked_user %}
+  <fieldset class="border border-slate-200 rounded-lg p-4 space-y-3">
+    <legend class="text-sm font-medium px-1">Вход в админку</legend>
+    <label class="flex items-center gap-2">
+      <input type="checkbox" name="with_login" {{ 'checked' if not employee }} class="rounded"
+             onchange="document.getElementById('login-fields').hidden = !this.checked">
+      Создать логин
+    </label>
+    <div id="login-fields" class="grid grid-cols-1 md:grid-cols-3 gap-3" {{ 'hidden' if employee }}>
+      <input name="login" placeholder="Логин" autocomplete="off" class="border border-slate-300 rounded-lg px-3 py-2">
+      <input name="password" type="text" placeholder="Временный пароль (от 8 символов)" autocomplete="off" class="border border-slate-300 rounded-lg px-3 py-2">
+      <select name="role" class="border border-slate-300 rounded-lg px-3 py-2">
+        {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'employee' }}>{{ role_labels[r] }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if employee %}<p class="text-xs text-slate-500">Логин создаётся при сохранении, если отмечено и заполнено.</p>{% endif %}
   </fieldset>
   {% endif %}
 
-  {% if employee %}
-  <label class="flex items-center gap-2 text-sm">
-    <input type="checkbox" name="is_active" {{ 'checked' if employee.is_active }} class="rounded">
-    Активен {% if linked_user %}(может входить и работать){% else %}(виден в боте, к нему можно записаться){% endif %}
-  </label>
-  {% endif %}
-
-  {% if employee and linked_user %}
-  <fieldset class="border border-slate-200 rounded-lg p-4">
-    <legend class="text-sm font-medium px-1">Права доступа (дополнительно к роли {{ linked_user.role }})</legend>
-    <div class="grid grid-cols-2 gap-2 text-sm">
+  {% if linked_user or not employee %}
+  <fieldset class="border border-slate-200 rounded-lg p-4 space-y-3">
+    <legend class="text-sm font-medium px-1">Права{% if linked_user %} · логин {{ linked_user.login }}{% endif %}</legend>
+    {% if linked_user %}
+    <label class="block w-60"><span class="text-slate-600">Роль</span>
+      <select name="role" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">
+        {% for r in roles %}<option value="{{ r }}" {{ 'selected' if linked_user.role == r }}>{{ role_labels[r] }}</option>{% endfor %}
+      </select></label>
+    {% endif %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
       {% for p in perms %}
       <label class="flex items-center gap-2">
         <input type="checkbox" name="permissions" value="{{ p }}" {{ 'checked' if p in selected_perms }} class="rounded">
@@ -56,8 +94,11 @@
       </label>
       {% endfor %}
     </div>
+    <p class="text-xs text-slate-500">Отмеченное добавляется к правам роли.</p>
   </fieldset>
+  {% endif %}
 
+  {% if linked_user %}
   <div class="border border-slate-200 rounded-lg p-4">
     <div class="text-sm font-medium mb-2">Сброс пароля ({{ linked_user.login }})</div>
     <div class="flex gap-2">
@@ -73,7 +114,24 @@
   </div>
 </form>
 
-{% if employee and linked_user %}
+{% if employee %}
+<div class="bg-white rounded-xl shadow p-6 mt-6 text-sm max-w-3xl flex items-center gap-4 flex-wrap">
+  <span class="text-slate-500">Записей: {{ bookings_count }}</span>
+  {% if employee.archived_at %}
+  <form method="post" action="/admin/employees/{{ employee.id }}/restore"><button class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">Восстановить из архива</button></form>
+  {% else %}
+  <form method="post" action="/admin/employees/{{ employee.id }}/archive"
+        onsubmit="return confirm('Перенести {{ employee.name }} в архив? Сотрудник пропадёт из бота, вход в админку отключится, записи сохранятся.')">
+    <button class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">В архив</button></form>
+  {% endif %}
+  {% if not bookings_count %}
+  <form method="post" action="/admin/employees/{{ employee.id }}/delete"
+        onsubmit="return confirm('Удалить {{ employee.name }} навсегда вместе с расписанием и подключением Google?')">
+    <button class="text-rose-600 hover:underline">Удалить</button></form>
+  {% else %}
+  <span class="text-xs text-slate-400">Удалить нельзя — есть записи; архив скрывает сотрудника и сохраняет историю.</span>
+  {% endif %}
+</div>
 <form id="resetpw" method="post" action="/admin/employees/{{ employee.id }}/reset-password"></form>
 {% endif %}
 {% endblock %}

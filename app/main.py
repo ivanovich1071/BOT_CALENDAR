@@ -19,6 +19,7 @@ from admin.routes import (
     schedule,
     services,
     settings_page,
+    users,
 )
 from app.api.routes import auth, google_oauth
 from app.config.network import prefer_ipv4
@@ -65,6 +66,7 @@ app.include_router(clients.router)
 app.include_router(dialogs.router)
 app.include_router(company.router)
 app.include_router(knowledge.router)
+app.include_router(users.router)
 app.include_router(settings_page.router)
 app.include_router(audit.router)
 

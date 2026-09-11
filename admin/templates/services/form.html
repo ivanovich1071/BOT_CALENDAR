@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">{{ page_title }}{% if service and service.archived_at %} <span class="text-sm font-normal text-slate-400">· в архиве</span>{% endif %}</h1>
+  <a href="/admin/services" class="text-sky-600 hover:underline text-sm">← Все услуги</a>
+</div>
+
+<form method="post" action="/admin/services/save" class="bg-white rounded-xl shadow p-6 space-y-5 text-sm max-w-3xl">
+  <input type="hidden" name="service_id" value="{{ service.id if service else 0 }}">
+  <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+    <label class="block md:col-span-4"><span class="text-slate-600">Название *</span>
+      <input name="name" required maxlength="120" value="{{ service.name if service else '' }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Минут</span>
+      <input name="duration_minutes" type="number" min="5" max="600" value="{{ service.duration_minutes if service else 60 }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Порядок</span>
+      <input name="sort_order" type="number" value="{{ service.sort_order if service else 0 }}"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+  </div>
+
+  <label class="block"><span class="text-slate-600">Описание</span>
+    <textarea name="description" rows="4" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">{{ service.description or '' if service else '' }}</textarea>
+    <span class="text-xs text-slate-500">Видно клиенту в «Информации» и уходит ИИ-консультанту.</span></label>
+
+  <fieldset class="border border-slate-200 rounded-lg p-4 space-y-2">
+    <legend class="text-sm font-medium px-1">Цена</legend>
+    <label class="flex items-center gap-2">
+      <input type="radio" name="price_mode" value="fixed" {{ 'checked' if price_mode == 'fixed' }}> Сумма
+      <input name="price" value="{{ service.price if service and service.price else '' }}" placeholder="1500"
+             class="ml-2 w-32 border border-slate-300 rounded-lg px-3 py-1.5"></label>
+    <label class="flex items-center gap-2"><input type="radio" name="price_mode" value="free" {{ 'checked' if price_mode == 'free' }}> Бесплатно</label>
+    <label class="flex items-center gap-2"><input type="radio" name="price_mode" value="negotiable" {{ 'checked' if price_mode == 'negotiable' }}> По договорённости</label>
+  </fieldset>
+
+  <fieldset class="border border-slate-200 rounded-lg p-4">
+    <legend class="text-sm font-medium px-1">Кто проводит</legend>
+    {% for e in employees %}
+    <label class="flex items-center gap-2 py-0.5">
+      <input type="checkbox" name="employees" value="{{ e.id }}" {{ 'checked' if e.id in performing }} class="rounded">
+      {{ e.name }}{% if e.specialization %} <span class="text-slate-400">· {{ e.specialization }}</span>{% endif %}
+    </label>
+    {% else %}
+    <p class="text-slate-500">Сотрудников пока нет.</p>
+    {% endfor %}
+    <p class="text-xs text-slate-500 mt-2">В боте к услуге предлагаются только отмеченные специалисты.</p>
+  </fieldset>
+
+  <label class="flex items-center gap-2">
+    <input type="checkbox" name="is_active" {{ 'checked' if not service or service.is_active }} class="rounded"> Показывать в боте
+  </label>
+
+  <div class="flex gap-3">
+    <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+    <a href="/admin/services" class="px-5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Отмена</a>
+  </div>
+</form>
+
+{% if service %}
+<div class="bg-white rounded-xl shadow p-6 mt-6 text-sm max-w-3xl flex items-center gap-4 flex-wrap">
+  <span class="text-slate-500">Записей на услугу: {{ bookings_count }}</span>
+  {% if service.archived_at %}
+  <form method="post" action="/admin/services/{{ service.id }}/restore"><button class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">Восстановить из архива</button></form>
+  {% else %}
+  <form method="post" action="/admin/services/{{ service.id }}/archive"><button class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">В архив</button></form>
+  {% endif %}
+  {% if not bookings_count %}
+  <form method="post" action="/admin/services/{{ service.id }}/delete" onsubmit="return confirm('Удалить услугу «{{ service.name }}» навсегда?')">
+    <button class="text-rose-600 hover:underline">Удалить</button></form>
+  {% else %}
+  <span class="text-xs text-slate-400">Удалить нельзя — есть записи; архив скрывает услугу из бота и списков.</span>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

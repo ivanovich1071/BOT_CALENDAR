@@ -1,27 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Сотрудники</h1>
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Сотрудники{% if archived %} · архив{% endif %}</h1>
   {% if user.has_permission('manage_employees') %}
   <a href="/admin/employees/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Добавить</a>
   {% endif %}
+</div>
+<div class="flex gap-2 mb-4 text-sm">
+  <a href="/admin/employees" class="px-3 py-1.5 rounded-lg border {{ 'bg-slate-900 text-white border-slate-900' if not archived else 'bg-white border-slate-300 hover:bg-slate-50' }}">Действующие</a>
+  <a href="/admin/employees?archived=1" class="px-3 py-1.5 rounded-lg border {{ 'bg-slate-900 text-white border-slate-900' if archived else 'bg-white border-slate-300 hover:bg-slate-50' }}">Архив</a>
 </div>
 
 <div class="bg-white rounded-xl shadow overflow-hidden">
   <table class="w-full text-sm">
     <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
       <th class="px-4 py-3">Имя</th><th class="px-4 py-3">Логин</th><th class="px-4 py-3">Телефон</th>
-      <th class="px-4 py-3">Специализация</th><th class="px-4 py-3">Google Calendar</th><th class="px-4 py-3">Статус</th><th></th>
+      <th class="px-4 py-3">Услуги</th><th class="px-4 py-3">Google Calendar</th><th class="px-4 py-3">Статус</th><th></th>
     </tr></thead>
     <tbody>
     {% for item in items %}
-      <tr class="border-b last:border-0">
-        <td class="px-4 py-3 font-medium">{{ item.employee.name }}</td>
-        <td class="px-4 py-3">{{ item.employee.user.login if item.employee.user else "—" }}</td>
-        <td class="px-4 py-3">{{ item.employee.phone or "—" }}</td>
-        <td class="px-4 py-3">{{ item.employee.specialization or "—" }}</td>
-        <td class="px-4 py-3">{{ item.google_status }}</td>
+      <tr class="border-b last:border-0 align-top">
         <td class="px-4 py-3">
+          <div class="font-medium">{{ item.employee.name }}</div>
+          {% if item.employee.specialization %}<div class="text-slate-500">{{ item.employee.specialization }}</div>{% endif %}
+        </td>
+        <td class="px-4 py-3">{{ item.employee.user.login if item.employee.user else "—" }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">{{ item.employee.phone or "—" }}</td>
+        <td class="px-4 py-3">{{ item.services }}</td>
+        <td class="px-4 py-3">{{ item.google_status }}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
           {% if item.employee.is_active %}<span class="text-emerald-600">● активен</span>{% else %}<span class="text-slate-400">● отключён</span>{% endif %}
         </td>
         <td class="px-4 py-3 text-right">
@@ -31,7 +38,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td class="px-4 py-6 text-slate-500" colspan="7">Сотрудников пока нет. Добавьте первого.</td></tr>
+      <tr><td class="px-4 py-6 text-slate-500" colspan="7">{% if archived %}В архиве пусто.{% else %}Сотрудников пока нет. Добавьте первого.{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

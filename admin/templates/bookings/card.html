@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+{% set badges = {"booked": "bg-emerald-100 text-emerald-700", "cancelled": "bg-rose-100 text-rose-700", "completed": "bg-sky-100 text-sky-700", "no_show": "bg-amber-100 text-amber-700"} %}
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold">Запись #{{ booking.id }}
+      <span class="align-middle ml-2 px-2 py-0.5 rounded-full text-xs {{ badges.get(booking.status, '') }}">{{ status_labels.get(booking.status, booking.status) }}</span>
+    </h1>
+    <div class="text-sm text-slate-500">
+      {{ booking.start_at|localdt }}–{{ booking.end_at|localtime }} · источник: {{ booking.source }} ·
+      создана {{ booking.created_at|localdt }}{% if booking.updated_at %} · изменена {{ booking.updated_at|localdt }}{% endif %}
+    </div>
+  </div>
+  <a href="/admin/bookings?date={{ date }}" class="text-sky-600 hover:underline text-sm">← К записям дня</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2 space-y-6">
+    <form method="post" action="/admin/bookings/{{ booking.id }}/update" class="bg-white rounded-xl shadow p-6 space-y-4 text-sm">
+      <h2 class="font-semibold">Данные записи</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="block"><span class="text-slate-600">Клиент</span>
+          <select name="client_id" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" {{ 'disabled' if not can_edit }}>
+            {% for c in clients %}<option value="{{ c.id }}" {{ 'selected' if c.id == booking.client_id }}>{{ c.name or "Без имени" }}{% if c.phone %} · {{ c.phone }}{% endif %}</option>{% endfor %}
+          </select>
+          <a href="/admin/clients/{{ booking.client_id }}" class="text-xs text-sky-600 hover:underline">Карточка клиента</a></label>
+        <label class="block"><span class="text-slate-600">Специалист</span>
+          <select name="employee_id" id="employee_id" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" {{ 'disabled' if not can_edit }}>
+            {% for e in employees %}<option value="{{ e.id }}" {{ 'selected' if e.id == booking.employee_id }}>{{ e.name }}{% if e.archived_at %} · в архиве{% endif %}</option>{% endfor %}
+          </select></label>
+        <label class="block"><span class="text-slate-600">Услуга</span>
+          <select name="service_id" id="service_id" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" {{ 'disabled' if not can_edit }}>
+            {% for s in services %}<option value="{{ s.id }}" {{ 'selected' if s.id == booking.service_id }}>{{ s.name }} ({{ s.duration_minutes }} мин){% if s.archived_at %} · в архиве{% endif %}</option>{% endfor %}
+          </select></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block"><span class="text-slate-600">Дата</span>
+            <input type="date" name="date" value="{{ date }}" required {{ 'disabled' if not can_edit }}
+                   hx-get="/admin/bookings/slots?exclude_booking_id={{ booking.id }}" hx-target="#slots" hx-trigger="change"
+                   hx-include="#employee_id,#service_id"
+                   class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+          <label class="block"><span class="text-slate-600">Время</span>
+            <input type="time" name="time" id="time" value="{{ time }}" step="300" required {{ 'disabled' if not can_edit }}
+                   class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+        </div>
+      </div>
+      {% if can_edit %}
+      <div id="slots" class="text-sm" onchange="if (event.target.name === 'slot') { document.getElementById('time').value = event.target.value }">
+        <p class="text-xs text-slate-500">Время можно ввести вручную или сменить дату — появятся свободные слоты по расписанию. Пересечения с другими записями и занятостью Google проверяются при сохранении.</p>
+      </div>
+      {% endif %}
+      <label class="block"><span class="text-slate-600">Заметка</span>
+        <textarea name="notes" rows="3" {{ 'disabled' if not can_edit }} class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">{{ booking.notes or '' }}</textarea>
+        {% if booking.source == 'ai' %}<span class="text-xs text-slate-500">Запись через ИИ-консультанта — в заметке резюме запроса клиента. <a href="/admin/dialogs/{{ booking.client_id }}" class="text-sky-600 hover:underline">Диалог</a></span>{% endif %}
+      </label>
+      {% if can_edit %}
+      <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+      {% endif %}
+    </form>
+
+    <div class="bg-white rounded-xl shadow p-6 text-sm">
+      <h2 class="font-semibold mb-3">История</h2>
+      {% for h in history %}
+      <div class="border-b border-slate-100 py-2 last:border-0">
+        <div><span class="font-medium">{{ h.action }}</span> · {{ h.actor }} · <span class="text-slate-500">{{ h.created_at|localdt }}</span></div>
+        {% if h.details %}<pre class="text-xs text-slate-500 whitespace-pre-wrap mt-1">{{ h.details|tojson(indent=1) }}</pre>{% endif %}
+      </div>
+      {% else %}
+      <p class="text-slate-500">Записей в журнале нет.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="bg-white rounded-xl shadow p-5 text-sm space-y-2">
+      <h2 class="font-semibold">Google Calendar</h2>
+      {% if booking.google_event_id %}
+        <div class="text-emerald-700">● Событие есть</div>
+        <div class="text-xs text-slate-500 break-all">{{ booking.google_event_id }}</div>
+      {% else %}
+        <div class="text-slate-500">● События нет{% if booking.status == 'booked' %} — календарь не подключён или запись не дошла до Google{% endif %}</div>
+      {% endif %}
+    </div>
+
+    {% if can_edit %}
+    <div class="bg-white rounded-xl shadow p-5 text-sm space-y-2">
+      <h2 class="font-semibold">Статус</h2>
+      {% for st, label in status_labels.items() if st != booking.status %}
+      <form method="post" action="/admin/bookings/{{ booking.id }}/status"
+            {% if st == 'cancelled' %}onsubmit="return confirm('Отменить запись #{{ booking.id }}? Событие уйдёт из Google Calendar.')"{% endif %}>
+        <input type="hidden" name="status" value="{{ st }}">
+        <button class="w-full text-left border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">→ {{ label }}</button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if can_delete %}
+    <form method="post" action="/admin/bookings/{{ booking.id }}/delete" class="bg-white rounded-xl shadow p-5 text-sm space-y-2"
+          onsubmit="return confirm('Удалить запись #{{ booking.id }} навсегда? Активная запись сначала отменится в Google Calendar.')">
+      <h2 class="font-semibold">Удаление</h2>
+      <p class="text-xs text-slate-500">Запись исчезнет из системы. В журнале останется отметка об удалении.</p>
+      <button class="text-rose-600 hover:underline">Удалить запись</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold">{{ client.name or "Без имени" }}{% if client.archived_at %} <span class="text-sm font-normal text-slate-400">· в архиве</span>{% endif %}</h1>
+    <div class="text-sm text-slate-500">
+      {% if client.telegram_username %}@{{ client.telegram_username }} · {% endif %}
+      {% if client.telegram_user_id %}Telegram ID {{ client.telegram_user_id }} · {% endif %}
+      с {{ client.created_at|localdate }}
+    </div>
+  </div>
+  <a href="/admin/clients" class="text-sky-600 hover:underline text-sm">← Все клиенты</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <form method="post" action="/admin/clients/{{ client.id }}/update" class="bg-white rounded-xl shadow p-6 space-y-3 text-sm">
+    <input type="hidden" name="back" value="/admin/clients/{{ client.id }}">
+    <h2 class="font-semibold">Данные</h2>
+    <label class="block"><span class="text-slate-600">Имя</span>
+      <input name="name" value="{{ client.name or '' }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Телефон</span>
+      <input name="phone" value="{{ client.phone or '' }}" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
+    <label class="block"><span class="text-slate-600">Заметка</span>
+      <textarea name="notes" rows="4" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2">{{ client.notes or '' }}</textarea></label>
+    <button class="bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700">Сохранить</button>
+
+    <div class="pt-4 mt-2 border-t border-slate-100 space-y-2">
+      {% if dialog_messages %}
+      <a href="/admin/dialogs/{{ client.id }}" class="block text-sky-600 hover:underline">Диалог с консультантом ({{ dialog_messages }} сообщений)</a>
+      {% endif %}
+      <div class="flex gap-3 flex-wrap">
+        {% if client.archived_at %}
+        <button form="restore" class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">Восстановить из архива</button>
+        {% else %}
+        <button form="archive" class="border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">В архив</button>
+        {% endif %}
+        {% if can_delete %}
+        <button form="delete" class="text-rose-600 hover:underline">Удалить клиента и данные</button>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  <div class="lg:col-span-2 bg-white rounded-xl shadow overflow-hidden">
+    <div class="px-4 py-3 font-semibold border-b">Записи ({{ bookings|length }})</div>
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+        <th class="px-4 py-2">Когда</th><th class="px-4 py-2">Специалист</th><th class="px-4 py-2">Услуга</th><th class="px-4 py-2">Статус</th><th class="px-4 py-2">Источник</th>
+      </tr></thead>
+      <tbody>
+      {% for b in bookings %}
+        <tr class="border-b last:border-0">
+          <td class="px-4 py-2 whitespace-nowrap"><a href="/admin/bookings/{{ b.id }}" class="text-sky-600 hover:underline">{{ b.start_at|localdt }}</a></td>
+          <td class="px-4 py-2">{{ b.employee.name }}</td>
+          <td class="px-4 py-2">{{ b.service.name }}</td>
+          <td class="px-4 py-2">{{ status_labels.get(b.status, b.status) }}</td>
+          <td class="px-4 py-2 text-slate-500">{{ b.source }}</td>
+        </tr>
+      {% else %}
+        <tr><td class="px-4 py-6 text-slate-500" colspan="5">Записей нет.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form id="archive" method="post" action="/admin/clients/{{ client.id }}/archive"></form>
+<form id="restore" method="post" action="/admin/clients/{{ client.id }}/restore"></form>
+<form id="delete" method="post" action="/admin/clients/{{ client.id }}/delete"
+      onsubmit="return confirm('Удалить клиента, все его записи и переписку? Будущие записи будут отменены и удалены из Google Calendar. Это необратимо.')"></form>
+{% endblock %}

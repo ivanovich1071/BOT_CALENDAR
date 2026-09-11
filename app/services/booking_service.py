@@ -189,6 +189,80 @@ def reschedule_booking(
                 pass
 
 
+def ensure_free(
+    db: Session,
+    *,
+    employee_id: int,
+    start_utc: datetime,
+    end_utc: datetime,
+    exclude_booking_id: int | None = None,
+    busy_intervals: list[tuple[datetime, datetime]] | None = None,
+) -> None:
+    """Бросает SlotTakenError, если время пересекается с записью в БД или занятостью Google."""
+    if _db_overlap(db, employee_id, start_utc, end_utc, exclude_booking_id=exclude_booking_id):
+        raise SlotTakenError("Время уже занято")
+    for bs, be in busy_intervals or []:
+        if start_utc < be and bs < end_utc:
+            raise SlotTakenError("Время занято в Google Calendar")
+
+
+def update_booking(
+    db: Session,
+    booking_id: int,
+    *,
+    client_id: int,
+    employee_id: int,
+    service_id: int,
+    start_at: datetime,
+    notes: str | None,
+    busy_intervals: list[tuple[datetime, datetime]] | None = None,
+) -> Booking:
+    """Правка записи целиком. Время проверяется, только если запись активна:
+    отменённая или завершённая никого не вытесняет."""
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise NotFoundError("Запись не найдена")
+    if start_at.tzinfo is None:
+        raise BookingError("start_at должен быть tz-aware")
+    client, employee, service = validate_refs(db, client_id, employee_id, service_id)
+    start_utc = start_at.astimezone(timezone.utc)
+    end_utc = start_utc + timedelta(minutes=service.duration_minutes)
+
+    lock = None
+    if booking.status == BOOKED:
+        try:
+            lock = _redis().lock(_lock_key(employee.id, start_utc), timeout=15, blocking_timeout=5)
+            lock.acquire()
+        except Exception:  # noqa: BLE001 — Redis недоступен: работаем на проверке БД
+            logger.warning("Redis-lock недоступен при правке записи #%s", booking_id)
+            lock = None
+    try:
+        if booking.status == BOOKED:
+            ensure_free(
+                db,
+                employee_id=employee.id,
+                start_utc=start_utc,
+                end_utc=end_utc,
+                exclude_booking_id=booking.id,
+                busy_intervals=busy_intervals,
+            )
+        booking.client_id = client.id
+        booking.employee_id = employee.id
+        booking.service_id = service.id
+        booking.start_at = start_utc
+        booking.end_at = end_utc
+        booking.notes = notes
+        db.commit()
+        db.refresh(booking)
+        return booking
+    finally:
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def restore_booking(
     db: Session,
     booking_id: int,

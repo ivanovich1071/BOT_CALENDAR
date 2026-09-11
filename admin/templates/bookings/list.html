@@ -33,7 +33,7 @@
     {% set badges = {"booked": "bg-emerald-100 text-emerald-700", "cancelled": "bg-rose-100 text-rose-700", "completed": "bg-sky-100 text-sky-700", "no_show": "bg-amber-100 text-amber-700"} %}
     {% for b in items %}
       <tr class="border-b last:border-0">
-        <td class="px-4 py-3 font-medium whitespace-nowrap">{{ b.start_at|localtime }}–{{ b.end_at|localtime }}</td>
+        <td class="px-4 py-3 font-medium whitespace-nowrap"><a href="/admin/bookings/{{ b.id }}" class="text-sky-700 hover:underline">{{ b.start_at|localtime }}–{{ b.end_at|localtime }}</a></td>
         <td class="px-4 py-3">{{ b.client.name or b.client.telegram_username or ("#" ~ b.client.id) }}</td>
         <td class="px-4 py-3">{{ b.employee.name }}</td>
         <td class="px-4 py-3">{{ b.service.name }}</td>

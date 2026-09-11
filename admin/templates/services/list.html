@@ -1,60 +1,41 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Услуги</h1>
-
-{% if can_manage %}
-<div class="bg-white rounded-xl shadow p-6 mb-6">
-  <h2 class="font-semibold mb-4">Добавить услугу</h2>
-  <form method="post" action="/admin/services/create" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-    <label class="text-sm md:col-span-2"><span class="text-slate-600">Название *</span>
-      <input name="name" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
-    <label class="text-sm"><span class="text-slate-600">Длительность, мин</span>
-      <input name="duration_minutes" type="number" value="30" min="5" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
-    <label class="text-sm"><span class="text-slate-600">Цена</span>
-      <input name="price" placeholder="напр. 1500" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
-    <button class="bg-slate-900 text-white rounded-lg px-4 py-2 hover:bg-slate-700">Добавить</button>
-    <label class="text-sm md:col-span-5"><span class="text-slate-600">Описание</span>
-      <input name="description" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></label>
-  </form>
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Услуги{% if archived %} · архив{% endif %}</h1>
+  {% if can_manage %}
+  <a href="/admin/services/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Услуга</a>
+  {% endif %}
 </div>
-{% endif %}
+<div class="flex gap-2 mb-4 text-sm">
+  <a href="/admin/services" class="px-3 py-1.5 rounded-lg border {{ 'bg-slate-900 text-white border-slate-900' if not archived else 'bg-white border-slate-300 hover:bg-slate-50' }}">Действующие</a>
+  <a href="/admin/services?archived=1" class="px-3 py-1.5 rounded-lg border {{ 'bg-slate-900 text-white border-slate-900' if archived else 'bg-white border-slate-300 hover:bg-slate-50' }}">Архив</a>
+</div>
 
 <div class="bg-white rounded-xl shadow overflow-hidden">
   <table class="w-full text-sm">
     <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
-      <th class="px-4 py-3">Название</th><th class="px-4 py-3">Длительность</th><th class="px-4 py-3">Цена</th><th class="px-4 py-3">Статус</th><th></th>
+      <th class="px-4 py-3 w-12">№</th><th class="px-4 py-3">Название</th><th class="px-4 py-3">Длительность</th>
+      <th class="px-4 py-3">Цена</th><th class="px-4 py-3">Проводят</th><th class="px-4 py-3">Статус</th><th></th>
     </tr></thead>
     <tbody>
-    {% for s in items %}
+    {% for item in items %}
+      {% set s = item.service %}
       <tr class="border-b last:border-0 align-top">
+        <td class="px-4 py-3 text-slate-500">{{ s.sort_order }}</td>
         <td class="px-4 py-3">
           <div class="font-medium">{{ s.name }}</div>
-          {% if s.description %}<div class="text-slate-500">{{ s.description }}</div>{% endif %}
+          {% if s.description %}<div class="text-slate-500">{{ s.description[:160] }}{% if s.description|length > 160 %}…{% endif %}</div>{% endif %}
         </td>
-        <td class="px-4 py-3">{{ s.duration_minutes }} мин</td>
-        <td class="px-4 py-3">{{ s.price or "—" }}</td>
-        <td class="px-4 py-3">{% if s.is_active %}<span class="text-emerald-600">● активна</span>{% else %}<span class="text-slate-400">● скрыта</span>{% endif %}</td>
-        <td class="px-4 py-3 text-right space-x-3 whitespace-nowrap">
-          {% if can_manage %}
-          <details class="inline text-left">
-            <summary class="inline cursor-pointer text-sky-600 hover:underline list-none">Изменить</summary>
-            <form method="post" action="/admin/services/{{ s.id }}/update" class="mt-2 p-3 border rounded-lg bg-slate-50 grid grid-cols-4 gap-2 w-[560px]">
-              <input name="name" value="{{ s.name }}" required class="col-span-4 border rounded px-2 py-1.5">
-              <input name="duration_minutes" type="number" value="{{ s.duration_minutes }}" min="5" class="border rounded px-2 py-1.5">
-              <input name="price" value="{{ s.price or '' }}" class="border rounded px-2 py-1.5" placeholder="Цена">
-              <input name="description" value="{{ s.description or '' }}" class="col-span-2 border rounded px-2 py-1.5" placeholder="Описание">
-              <label class="col-span-4 flex items-center gap-2 text-xs"><input type="checkbox" name="is_active" {{ 'checked' if s.is_active }} class="rounded"> активна</label>
-              <button class="col-span-4 bg-slate-900 text-white rounded px-3 py-1.5">Сохранить</button>
-            </form>
-          </details>
-          <form method="post" action="/admin/services/{{ s.id }}/toggle" class="inline">
-            <button class="text-slate-500 hover:underline">{{ "Скрыть" if s.is_active else "Включить" }}</button>
-          </form>
-          {% endif %}
+        <td class="px-4 py-3 whitespace-nowrap">{{ s.duration_minutes }} мин</td>
+        <td class="px-4 py-3 whitespace-nowrap">{{ item.price }}</td>
+        <td class="px-4 py-3">{{ item.performers|join(", ") or "—" }}</td>
+        <td class="px-4 py-3">{% if s.is_active %}<span class="text-emerald-600">● в боте</span>{% else %}<span class="text-slate-400">● скрыта</span>{% endif %}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          {% if can_manage %}<a href="/admin/services/{{ s.id }}/edit" class="text-sky-600 hover:underline">Изменить</a>{% endif %}
         </td>
       </tr>
     {% else %}
-      <tr><td class="px-4 py-6 text-slate-500" colspan="5">Услуг пока нет.</td></tr>
+      <tr><td class="px-4 py-6 text-slate-500" colspan="7">{% if archived %}В архиве пусто.{% else %}Услуг пока нет.{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

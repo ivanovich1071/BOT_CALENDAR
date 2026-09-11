@@ -5,6 +5,12 @@ MANAGER = "manager"
 EMPLOYEE = "employee"
 VIEWER = "viewer"
 ROLES = (ADMIN, MANAGER, EMPLOYEE, VIEWER)
+ROLE_LABELS_RU = {
+    ADMIN: "Администратор",
+    MANAGER: "Менеджер",
+    EMPLOYEE: "Сотрудник",
+    VIEWER: "Наблюдатель",
+}
 
 # Гранулярные права
 PERM_MANAGE_EMPLOYEES = "manage_employees"

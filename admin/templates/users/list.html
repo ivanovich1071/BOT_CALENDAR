@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-2">
+  <h1 class="text-2xl font-bold">Пользователи</h1>
+  <a href="/admin/users/new" class="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 text-sm">+ Пользователь</a>
+</div>
+<p class="text-sm text-slate-500 mb-6">Логины для входа в админку. Права складываются из роли и отмеченных дополнительно.</p>
+
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead><tr class="text-left text-slate-500 border-b bg-slate-50">
+      <th class="px-4 py-3">Логин</th><th class="px-4 py-3">Роль</th><th class="px-4 py-3">Сотрудник</th>
+      <th class="px-4 py-3">Доп. права</th><th class="px-4 py-3">Статус</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for u in items %}
+      <tr class="border-b last:border-0">
+        <td class="px-4 py-3 font-medium">{{ u.login }}{% if u.id == user.id %} <span class="text-xs text-slate-400">· это вы</span>{% endif %}</td>
+        <td class="px-4 py-3">{{ role_labels.get(u.role, u.role) }}</td>
+        <td class="px-4 py-3">{{ u.employee.name if u.employee else "—" }}</td>
+        <td class="px-4 py-3 text-slate-500">{{ (u.permissions or [])|length or "—" }}</td>
+        <td class="px-4 py-3">{% if u.is_active %}<span class="text-emerald-600">● активен</span>{% else %}<span class="text-slate-400">● отключён</span>{% endif %}</td>
+        <td class="px-4 py-3 text-right space-x-3 whitespace-nowrap">
+          <a href="/admin/users/{{ u.id }}/edit" class="text-sky-600 hover:underline">Изменить</a>
+          {% if u.id != user.id %}
+          <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline"
+                onsubmit="return confirm('Удалить пользователя {{ u.login }}? Сотрудник останется, но без логина.')">
+            <button class="text-rose-600 hover:underline">Удалить</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

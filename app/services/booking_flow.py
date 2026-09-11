@@ -202,6 +202,118 @@ def cancel(
     return booking, google
 
 
+def delete(db: Session, booking_id: int, *, actor: str, user_id: int | None = None) -> GoogleResult:
+    """Удаляет запись совсем. Активную сначала отменяет — её событие уходит из Google."""
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise booking_service.NotFoundError("Запись не найдена")
+    google: GoogleResult = None
+    if booking.status == BOOKED:
+        booking, google = cancel(db, booking_id, actor=actor, user_id=user_id)
+    details = {
+        "start": calendar_service.as_utc(booking.start_at).isoformat(),
+        "employee_id": booking.employee_id,
+        "service_id": booking.service_id,
+        "client_id": booking.client_id,
+        "status": booking.status,
+    }
+    db.delete(booking)
+    db.commit()
+    log_action(
+        db, actor=actor, action="booking.delete", entity_type="booking",
+        entity_id=booking_id, details=details, user_id=user_id,
+    )
+    return google
+
+
+def _snapshot(booking: Booking) -> dict:
+    return {
+        "client_id": booking.client_id,
+        "employee_id": booking.employee_id,
+        "service_id": booking.service_id,
+        "start": calendar_service.as_utc(booking.start_at).isoformat(),
+        "end": calendar_service.as_utc(booking.end_at).isoformat(),
+        "notes": booking.notes,
+    }
+
+
+def update(
+    db: Session,
+    booking_id: int,
+    *,
+    client_id: int,
+    employee_id: int,
+    service_id: int,
+    start_at: datetime,
+    notes: str | None,
+    actor: str,
+    user_id: int | None = None,
+) -> tuple[Booking, GoogleResult]:
+    """Правка записи из админки: клиент, сотрудник, услуга, время, заметка.
+
+    Сменился сотрудник — событие переезжает в его рабочий календарь: из старого
+    удаляется, в новом создаётся. Иначе правится то же самое событие.
+    """
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise booking_service.NotFoundError("Запись не найдена")
+    before = _snapshot(booking)
+    employee_changed = employee_id != booking.employee_id
+    active = booking.status == BOOKED
+
+    busy: list[tuple[datetime, datetime]] = []
+    if active:
+        busy = _google_busy(db, employee_id, start_at.astimezone(local_tz()).date())
+        if not employee_changed:
+            busy = _without_own_event(busy, booking)
+        elif booking.google_event_id:
+            # Событие из старого календаря убираем, только убедившись, что новое время свободно
+            _client, _employee, service = booking_service.validate_refs(db, client_id, employee_id, service_id)
+            start_utc = start_at.astimezone(timezone.utc)
+            booking_service.ensure_free(
+                db,
+                employee_id=employee_id,
+                start_utc=start_utc,
+                end_utc=start_utc + timedelta(minutes=service.duration_minutes),
+                exclude_booking_id=booking.id,
+                busy_intervals=busy,
+            )
+            _safe_push(db, booking, "move_out", calendar_service.push_cancel)
+
+    booking = booking_service.update_booking(
+        db,
+        booking_id,
+        client_id=client_id,
+        employee_id=employee_id,
+        service_id=service_id,
+        start_at=start_at,
+        notes=notes,
+        busy_intervals=busy,
+    )
+
+    google: GoogleResult = None
+    if active:
+        if employee_changed:
+            booking.google_event_id = None
+            booking.calendar_id = None
+            db.commit()
+            google = _safe_push(db, booking, "create", calendar_service.push_booking)
+        elif booking.google_event_id:
+            google = _safe_push(db, booking, "reschedule", calendar_service.push_reschedule)
+
+    after = _snapshot(booking)
+    log_action(
+        db,
+        actor=actor,
+        action="booking.update",
+        entity_type="booking",
+        entity_id=booking.id,
+        user_id=user_id,
+        details={k: {"было": before[k], "стало": v} for k, v in after.items() if before[k] != v},
+    )
+    return booking, google
+
+
 def restore(
     db: Session,
     booking_id: int,

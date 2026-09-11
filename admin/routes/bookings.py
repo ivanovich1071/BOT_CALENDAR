@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
@@ -9,6 +9,7 @@ from admin.flash import redirect
 from admin.templating import render
 from app.api.dependencies import get_current_user, require_permission
 from app.db.database import get_db
+from app.models.audit_log import AuditLog
 from app.models.booking import Booking
 from app.models.client import Client
 from app.models.employee import Employee
@@ -291,3 +292,118 @@ async def change_status(
     else:
         message = "Запись возвращена" if status == "booked" else "Статус обновлён"
     return redirect(back, ok=message)
+
+
+# ==== Карточка записи: правка всех полей и удаление ====
+
+@router.get("/{booking_id}")
+async def booking_card(
+    booking_id: int,
+    request: Request,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not user.has_permission("view_calendar"):
+        return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        return redirect("/admin/bookings", err="Запись не найдена")
+
+    # В выпадающих списках — действующие плюс текущие значения записи, даже если они в архиве
+    employees = db.scalars(
+        select(Employee).where(Employee.archived_at.is_(None)).order_by(Employee.name)
+    ).all()
+    if booking.employee not in employees:
+        employees = [booking.employee, *employees]
+    services = db.scalars(
+        select(Service).where(Service.archived_at.is_(None)).order_by(Service.sort_order, Service.name)
+    ).all()
+    if booking.service not in services:
+        services = [booking.service, *services]
+    clients = db.scalars(
+        select(Client).where(Client.archived_at.is_(None)).order_by(Client.name.nulls_last()).limit(300)
+    ).all()
+    if booking.client not in clients:
+        clients = [booking.client, *clients]
+    history = db.scalars(
+        select(AuditLog)
+        .where(AuditLog.entity_type == "booking", AuditLog.entity_id == str(booking_id))
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    ).all()
+    start_local = booking.start_at.astimezone(local_tz())
+    return render(
+        request,
+        "bookings/card.html",
+        {
+            "user": user,
+            "nav": "bookings",
+            "booking": booking,
+            "employees": employees,
+            "services": services,
+            "clients": clients,
+            "history": history,
+            "date": start_local.date().isoformat(),
+            "time": start_local.strftime("%H:%M"),
+            "status_labels": BOOKING_STATUS_LABELS_RU,
+            "can_edit": user.has_permission("edit_booking"),
+            "can_delete": user.has_permission("delete_booking"),
+            "page_title": f"Запись #{booking.id}",
+        },
+    )
+
+
+@router.post("/{booking_id}/update")
+async def update_booking_post(
+    booking_id: int,
+    request: Request,
+    user=Depends(require_permission("edit_booking")),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    back = f"/admin/bookings/{booking_id}"
+    day = _parse_date(form.get("date") or "")
+    try:
+        employee_id = int(form.get("employee_id") or 0)
+        service_id = int(form.get("service_id") or 0)
+        client_id = int(form.get("client_id") or 0)
+        hh, mm = str(form.get("time") or "").strip().split(":")
+        start_local = datetime.combine(day, time(int(hh), int(mm)), tzinfo=local_tz())
+    except (TypeError, ValueError):
+        return redirect(back, err="Укажите сотрудника, услугу, клиента, дату и время")
+    notes = str(form.get("notes") or "").strip() or None
+    try:
+        _booking, google = booking_flow.update(
+            db,
+            booking_id,
+            client_id=client_id,
+            employee_id=employee_id,
+            service_id=service_id,
+            start_at=start_local,
+            notes=notes,
+            actor=user.login,
+            user_id=user.id,
+        )
+    except (booking_service.SlotTakenError, booking_service.NotFoundError, booking_service.BookingError) as exc:
+        return redirect(back, err=str(exc))
+    message = "Запись сохранена"
+    if google is False:
+        message += ", но Google Calendar не обновился — проверьте журнал"
+    return redirect(back, ok=message)
+
+
+@router.post("/{booking_id}/delete")
+async def delete_booking_post(
+    booking_id: int,
+    user=Depends(require_permission("delete_booking")),
+    db: Session = Depends(get_db),
+):
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        return redirect("/admin/bookings", err="Запись не найдена")
+    day = booking.start_at.astimezone(local_tz()).date().isoformat()
+    google = booking_flow.delete(db, booking_id, actor=user.login, user_id=user.id)
+    message = "Запись удалена"
+    if google is False:
+        message += ", но событие в Google Calendar не удалено — проверьте журнал"
+    return redirect(f"/admin/bookings?date={day}", ok=message)
