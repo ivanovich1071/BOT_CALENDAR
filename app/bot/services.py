@@ -130,6 +130,7 @@ def employees_with_schedule(db: Session, service_id: int | None = None) -> list[
                     "specialization": e.specialization,
                     "bio": e.bio,
                     "service_ids": linked,
+                    "weekdays": sorted(working_weekdays(db, e.id)),
                 }
             )
     return result

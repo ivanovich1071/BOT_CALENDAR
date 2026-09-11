@@ -46,6 +46,13 @@ def test_промпт_собирается_из_данных_компании():
     assert "find_slots" in prompt and "propose_booking" in prompt
 
 
+def test_дни_приёма_специалиста_в_промпте():
+    employees = [{**EMPLOYEES[0], "weekdays": [0, 1, 2, 3, 4]}, EMPLOYEES[1]]
+    prompt = build_system_prompt(company=COMPANY, articles=[], services=SERVICES, employees=employees, today=TODAY)
+    assert "Обычно принимает: пн, вт, ср, чт, пт" in prompt
+    assert "по договорённости»" in prompt  # правило о ценах услуг
+
+
 def test_длинная_база_знаний_обрезается():
     prompt = _prompt([{"title": "Много", "body": "а" * (MAX_KNOWLEDGE_CHARS + 500)}])
     assert "база знаний обрезана" in prompt

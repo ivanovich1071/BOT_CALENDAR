@@ -37,7 +37,10 @@ TOOLS = [
                     "service_id": {"type": "integer", "description": "id услуги из списка услуг"},
                     "employee_id": {"type": ["integer", "null"], "description": "id специалиста или null — любой"},
                     "date_from": {"type": "string", "description": "YYYY-MM-DD из календаря"},
-                    "date_to": {"type": ["string", "null"], "description": "YYYY-MM-DD или null — один день"},
+                    "date_to": {
+                        "type": ["string", "null"],
+                        "description": "YYYY-MM-DD или null — только date_from. Клиент не назвал день — передай date_from + 6",
+                    },
                     "time_from": {"type": ["string", "null"], "description": "HH:MM или null"},
                     "time_to": {"type": ["string", "null"], "description": "HH:MM или null"},
                 },
