@@ -34,7 +34,10 @@ async def list_employees(
     if not user.has_permission("manage_employees") and not user.has_permission("view_calendar"):
         return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
     employees = db.scalars(
-        select(Employee).options(selectinload(Employee.user)).order_by(Employee.name)
+        select(Employee)
+        .options(selectinload(Employee.user))
+        .where(Employee.archived_at.is_(None))
+        .order_by(Employee.name)
     ).all()
     data = [
         {

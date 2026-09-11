@@ -23,7 +23,9 @@ async def list_services(
 ):
     if not user.has_permission("manage_services") and not user.has_permission("create_booking"):
         return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
-    services = db.scalars(select(Service).order_by(Service.name)).all()
+    services = db.scalars(
+        select(Service).where(Service.archived_at.is_(None)).order_by(Service.sort_order, Service.name)
+    ).all()
     return render(
         request,
         "services/list.html",

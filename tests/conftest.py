@@ -24,6 +24,7 @@ from app.services.schedule_service import local_now
 TEST_DB_NAME = "booking_test"
 
 TABLES = (
+    "outbox, ai_messages, knowledge_articles, schedule_exceptions, employee_services, "
     "notifications, bookings, calendars, google_accounts, schedules, "
     "employees, services, clients, audit_logs, users, app_settings"
 )
@@ -51,6 +52,11 @@ def engine():
         pytest.skip("PostgreSQL недоступен — тесты с БД пропущены")
 
     test_engine = create_engine(test_url)
+    # Схему пересоздаём целиком: create_all не добавляет новые колонки в существующие
+    # таблицы, а drop_all спотыкается о цикл внешних ключей employees ↔ calendars
+    with test_engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
     Base.metadata.create_all(test_engine)
     yield test_engine
     test_engine.dispose()

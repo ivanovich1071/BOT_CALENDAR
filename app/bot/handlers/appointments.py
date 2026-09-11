@@ -10,8 +10,8 @@ from aiogram.types import CallbackQuery, Message
 from app.bot import services, texts
 from app.bot.db import run_db
 from app.bot.deps import current_client
+from app.bot.handlers.booking import calendar_markup
 from app.bot.keyboards import menu
-from app.bot.keyboards.calendar import build_calendar
 from app.bot.keyboards.callbacks import BookingCB, CalendarCB, ConfirmCB, SlotCB
 from app.bot.keyboards.menu import main_menu
 from app.bot.states import Reschedule
@@ -66,19 +66,12 @@ async def start_reschedule(
         employee_name=context["employee"],
         service_name=context["service"],
     )
-    weekdays = await run_db(services.working_weekdays, context["employee_id"])
-    min_date, max_date = services.horizon()
+    today, _ = services.horizon()
     await call.message.edit_text(
         texts.RESCHEDULE_CHOOSE_DAY.format(
             date=texts.human_date(context["date"]), start=context["start"]
         ),
-        reply_markup=build_calendar(
-            min_date.year,
-            min_date.month,
-            allowed_weekdays=weekdays,
-            min_date=min_date,
-            max_date=max_date,
-        ),
+        reply_markup=await calendar_markup(context["employee_id"], today.year, today.month),
     )
     await call.answer()
 
@@ -86,16 +79,8 @@ async def start_reschedule(
 @router.callback_query(Reschedule.day, CalendarCB.filter(F.action.in_({"prev", "next"})))
 async def flip_month(call: CallbackQuery, callback_data: CalendarCB, state: FSMContext) -> None:
     data = await state.get_data()
-    weekdays = await run_db(services.working_weekdays, data["employee_id"])
-    min_date, max_date = services.horizon()
     await call.message.edit_reply_markup(
-        reply_markup=build_calendar(
-            callback_data.year,
-            callback_data.month,
-            allowed_weekdays=weekdays,
-            min_date=min_date,
-            max_date=max_date,
-        )
+        reply_markup=await calendar_markup(data["employee_id"], callback_data.year, callback_data.month)
     )
     await call.answer()
 

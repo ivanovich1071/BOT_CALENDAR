@@ -17,8 +17,9 @@ router = Router(name="start")
 async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
     client = await current_client(message.from_user)
+    company = await run_db(services.company_profile)
     await message.answer(
-        texts.GREETING.format(name=display_name(message.from_user)),
+        texts.greeting(company, display_name(message.from_user)),
         reply_markup=main_menu(),
     )
     if not client["phone"]:
@@ -46,4 +47,6 @@ async def cancel(message: Message, state: FSMContext) -> None:
 @router.message(Command("help"))
 @router.message(F.text == texts.BTN_INFO)
 async def info(message: Message) -> None:
-    await message.answer(texts.INFO, reply_markup=main_menu())
+    company = await run_db(services.company_profile)
+    items = await run_db(services.active_services)
+    await message.answer(texts.info(company, items), reply_markup=main_menu())

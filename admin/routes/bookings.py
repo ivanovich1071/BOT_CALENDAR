@@ -65,7 +65,9 @@ async def list_bookings(
         q = q.where(Booking.status == status)
     bookings = db.scalars(q).all()
     employees = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.name)
+        select(Employee)
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
     ).all()
     return render(
         request,
@@ -94,10 +96,14 @@ async def new_booking(
     db: Session = Depends(get_db),
 ):
     employees = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.name)
+        select(Employee)
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
     ).all()
     services = db.scalars(
-        select(Service).where(Service.is_active.is_(True)).order_by(Service.name)
+        select(Service)
+        .where(Service.is_active.is_(True), Service.archived_at.is_(None))
+        .order_by(Service.sort_order, Service.name)
     ).all()
     clients = db.scalars(select(Client).order_by(Client.name.nulls_last()).limit(200)).all()
     return render(

@@ -37,7 +37,9 @@ async def schedule_page(
     if not user.has_permission("manage_schedule") and not user.has_permission("view_calendar"):
         return render(request, "error.html", {"user": user, "message": "Недостаточно прав"}, 403)
     employees = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.name)
+        select(Employee)
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
     ).all()
     chosen = None
     rows: dict[int, Schedule] = {}

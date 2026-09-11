@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.config.settings import get_settings
 from app.models.booking import Booking
-from app.models.enums import BOOKED
+from app.models.enums import BOOKED, EXC_BLOCK, EXC_DAY_OFF, EXC_EXTRA
 from app.models.schedule import Schedule
+from app.models.schedule_exception import ScheduleException
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,58 @@ def _combine(d: date, t: time) -> datetime:
     return datetime.combine(d, t, tzinfo=local_tz())
 
 
-def working_intervals(db: Session, employee_id: int, day: date) -> list[tuple[datetime, datetime]]:
-    """Рабочие интервалы сотрудника на дату (в локальной таймзоне), минус перерыв."""
+Interval = tuple[datetime, datetime]
+
+
+def _subtract(intervals: list[Interval], cut_start: datetime, cut_end: datetime) -> list[Interval]:
+    """Вырезает отрезок из списка интервалов (перерыв, закрытое время)."""
+    result: list[Interval] = []
+    for s, e in intervals:
+        if cut_end <= s or cut_start >= e:
+            result.append((s, e))
+            continue
+        if s < cut_start:
+            result.append((s, cut_start))
+        if cut_end < e:
+            result.append((cut_end, e))
+    return result
+
+
+def _merge(intervals: list[Interval]) -> list[Interval]:
+    """Склеивает пересекающиеся интервалы — дополнительное окно может задеть рабочее время."""
+    merged: list[Interval] = []
+    for s, e in sorted(intervals):
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def exceptions_on(db: Session, employee_id: int, day: date) -> list[ScheduleException]:
+    return list(
+        db.scalars(
+            select(ScheduleException).where(
+                ScheduleException.employee_id == employee_id,
+                ScheduleException.date_from <= day,
+                ScheduleException.date_to >= day,
+            )
+        )
+    )
+
+
+def _has_times(exc: ScheduleException) -> bool:
+    return bool(exc.start_time and exc.end_time and exc.end_time > exc.start_time)
+
+
+def working_intervals(db: Session, employee_id: int, day: date) -> list[Interval]:
+    """Рабочие интервалы сотрудника на дату (в локальной таймзоне).
+
+    Недельное расписание минус перерыв, поверх — исключения на эту дату:
+    выходной убирает день целиком, дополнительное окно добавляет время,
+    закрытое время вырезается.
+    """
+    intervals: list[Interval] = []
     row = db.scalar(
         select(Schedule).where(
             Schedule.employee_id == employee_id,
@@ -39,21 +90,25 @@ def working_intervals(db: Session, employee_id: int, day: date) -> list[tuple[da
             Schedule.is_active.is_(True),
         )
     )
-    if row is None or row.end_time <= row.start_time:
+    if row is not None and row.end_time > row.start_time:
+        intervals = [(_combine(day, row.start_time), _combine(day, row.end_time))]
+        if row.break_start and row.break_end and row.break_end > row.break_start:
+            intervals = _subtract(intervals, _combine(day, row.break_start), _combine(day, row.break_end))
+
+    exceptions = exceptions_on(db, employee_id, day)
+    # «Закрыть время» без часов — то же, что выходной
+    if any(e.kind == EXC_DAY_OFF or (e.kind == EXC_BLOCK and not _has_times(e)) for e in exceptions):
         return []
-    intervals = [(_combine(day, row.start_time), _combine(day, row.end_time))]
-    if row.break_start and row.break_end and row.break_end > row.break_start:
-        b_start, b_end = _combine(day, row.break_start), _combine(day, row.break_end)
-        split: list[tuple[datetime, datetime]] = []
-        for s, e in intervals:
-            if b_end <= s or b_start >= e:
-                split.append((s, e))
-                continue
-            if s < b_start:
-                split.append((s, b_start))
-            if b_end < e:
-                split.append((b_end, e))
-        intervals = split
+    extra = [
+        (_combine(day, e.start_time), _combine(day, e.end_time))
+        for e in exceptions
+        if e.kind == EXC_EXTRA and _has_times(e)
+    ]
+    if extra:
+        intervals = _merge(intervals + extra)
+    for e in exceptions:
+        if e.kind == EXC_BLOCK:
+            intervals = _subtract(intervals, _combine(day, e.start_time), _combine(day, e.end_time))
     return intervals
 
 

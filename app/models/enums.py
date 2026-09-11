@@ -78,6 +78,17 @@ BOOKING_STATUS_LABELS_RU = {
     NO_SHOW: "Неявка",
 }
 
+# Исключения расписания
+EXC_DAY_OFF = "day_off"
+EXC_BLOCK = "block"
+EXC_EXTRA = "extra"
+EXCEPTION_KINDS = (EXC_DAY_OFF, EXC_BLOCK, EXC_EXTRA)
+EXCEPTION_KIND_LABELS_RU = {
+    EXC_DAY_OFF: "Выходной / отпуск",
+    EXC_BLOCK: "Закрыть время",
+    EXC_EXTRA: "Дополнительное окно",
+}
+
 # Источник записи
 SOURCE_TELEGRAM = "telegram"
 SOURCE_ADMIN = "admin"

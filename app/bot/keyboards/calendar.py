@@ -29,12 +29,19 @@ def month_matrix(year: int, month: int) -> list[list[date | None]]:
 
 
 def is_selectable(
-    day: date | None, allowed_weekdays: set[int], min_date: date, max_date: date
+    day: date | None,
+    allowed_weekdays: set[int],
+    min_date: date,
+    max_date: date,
+    allowed_days: set[date] | None = None,
 ) -> bool:
+    """Конкретные даты (allowed_days) важнее дней недели: учитывают выходные и доп. окна."""
     if day is None:
         return False
     if day < min_date or day > max_date:
         return False
+    if allowed_days is not None:
+        return day in allowed_days
     return day.weekday() in allowed_weekdays
 
 
@@ -47,9 +54,10 @@ def build_calendar(
     year: int,
     month: int,
     *,
-    allowed_weekdays: set[int],
+    allowed_weekdays: set[int] = frozenset(),
     min_date: date,
     max_date: date,
+    allowed_days: set[date] | None = None,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
 
@@ -85,7 +93,7 @@ def build_calendar(
     for week in month_matrix(year, month):
         row = []
         for day in week:
-            if is_selectable(day, allowed_weekdays, min_date, max_date):
+            if is_selectable(day, allowed_weekdays, min_date, max_date, allowed_days):
                 row.append(
                     InlineKeyboardButton(
                         text=str(day.day),

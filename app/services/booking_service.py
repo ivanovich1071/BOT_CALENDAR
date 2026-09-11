@@ -72,9 +72,9 @@ def _db_overlap(
 def validate_refs(db: Session, client_id: int, employee_id: int, service_id: int) -> tuple:
     service = db.get(Service, service_id)
     employee = db.get(Employee, employee_id)
-    if service is None or not service.is_active:
+    if service is None or not service.is_active or service.archived_at is not None:
         raise NotFoundError("Услуга не найдена")
-    if employee is None or not employee.is_active:
+    if employee is None or not employee.is_active or employee.archived_at is not None:
         raise NotFoundError("Сотрудник не найден")
     from app.models.client import Client
 

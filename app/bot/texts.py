@@ -1,4 +1,10 @@
-"""Все тексты бота в одном месте — заказчик правит их, не трогая логику."""
+"""Все тексты бота в одном месте — заказчик правит их, не трогая логику.
+
+Приветствие и «Информация» собираются из профиля компании (админка → «Компания»),
+константы ниже — запасной вариант, пока профиль не заполнен.
+"""
+
+from html import escape
 
 WEEKDAYS_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 MONTHS_GENITIVE = [
@@ -34,6 +40,48 @@ INFO = (
     "✍️ Можно и просто написать, например: «хочу на консультацию в пятницу после обеда» — "
     "я подберу свободное время."
 )
+
+HOW_IT_WORKS = (
+    "📅 <b>Записаться</b> — выберите услугу, специалиста, дату и время.\n"
+    "📋 <b>Мои записи</b> — перенос и отмена.\n"
+    "✍️ Или просто напишите вопрос своими словами — отвечу и подберу время."
+)
+
+
+def greeting(company: dict, name: str) -> str:
+    """Приветствие из профиля компании; {name} подставляется, остальной текст экранируется."""
+    template = escape(company.get("greeting") or GREETING, quote=False)
+    try:
+        return template.format(name=escape(name, quote=False))
+    except (KeyError, IndexError, ValueError):
+        return template  # в тексте из админки фигурные скобки без {name}
+
+
+def info(company: dict, services: list[dict]) -> str:
+    """«Информация»: о компании, на что записаться, контакты, как пользоваться ботом."""
+    if not company.get("name"):
+        return INFO
+    parts = [f"<b>{escape(company['name'], quote=False)}</b>"]
+    if company.get("tagline"):
+        parts[0] += f"\n<i>{escape(company['tagline'], quote=False)}</i>"
+    if company.get("description"):
+        parts.append(escape(company["description"], quote=False))
+    if services:
+        lines = [
+            f"• {escape(s['name'], quote=False)} — {s['duration']} мин, {s['price_label']}"
+            for s in services
+        ]
+        parts.append("<b>На что можно записаться</b>\n" + "\n".join(lines))
+    contacts = [
+        f"{icon} {escape(company[key], quote=False)}"
+        for icon, key in (("📞", "phone"), ("✈️", "telegram"), ("🌐", "website"), ("✉️", "email"))
+        if company.get(key)
+    ]
+    if contacts:
+        parts.append("\n".join(contacts))
+    parts.append(HOW_IT_WORKS)
+    return "\n\n".join(parts)
+
 
 CHOOSE_SERVICE = "Выберите услугу:"
 CHOOSE_EMPLOYEE = "Выберите специалиста:"

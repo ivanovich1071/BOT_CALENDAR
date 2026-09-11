@@ -38,7 +38,7 @@ def ask_phone() -> ReplyKeyboardMarkup:
 def services(items: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for s in items:
-        price = f" · {s['price']:.0f} ₽" if s.get("price") else ""
+        price = f" · {s['price_label']}" if s.get("price_label") else ""
         rows.append(
             [
                 InlineKeyboardButton(

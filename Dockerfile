@@ -16,6 +16,8 @@ COPY alembic.ini .
 COPY app ./app
 COPY admin ./admin
 COPY scripts ./scripts
+# Шаблоны «пакета компании» — для python -m app.cli import-company seed/...
+COPY seed ./seed
 
 RUN useradd --system --uid 10001 --no-create-home booking && chown -R booking /app
 USER booking

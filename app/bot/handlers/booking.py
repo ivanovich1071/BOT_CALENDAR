@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 router = Router(name="booking")
 
 
-async def show_calendar(target: Message, employee_id: int, year: int, month: int) -> None:
-    weekdays = await run_db(services.working_weekdays, employee_id)
+async def calendar_markup(employee_id: int, year: int, month: int):
+    """Календарь месяца: нажимаются только дни, когда специалист принимает."""
     min_date, max_date = services.horizon()
-    await target.answer(
-        texts.CHOOSE_DAY,
-        reply_markup=build_calendar(
-            year, month, allowed_weekdays=weekdays, min_date=min_date, max_date=max_date
-        ),
-    )
+    days = await run_db(services.open_days, employee_id, min_date, max_date)
+    return build_calendar(year, month, min_date=min_date, max_date=max_date, allowed_days=days)
+
+
+async def show_calendar(target: Message, employee_id: int, year: int, month: int) -> None:
+    await target.answer(texts.CHOOSE_DAY, reply_markup=await calendar_markup(employee_id, year, month))
 
 
 @router.message(F.text == texts.BTN_BOOK)
@@ -53,7 +53,7 @@ async def pick_service(call: CallbackQuery, callback_data: ServiceCB, state: FSM
         return
     await state.update_data(service_id=chosen["id"], service_name=chosen["name"])
 
-    employees = await run_db(services.employees_with_schedule)
+    employees = await run_db(services.employees_with_schedule, chosen["id"])
     if not employees:
         await state.clear()
         await call.message.edit_text(texts.NO_EMPLOYEES)
@@ -67,7 +67,8 @@ async def pick_service(call: CallbackQuery, callback_data: ServiceCB, state: FSM
 
 @router.callback_query(Booking.employee, EmployeeCB.filter())
 async def pick_employee(call: CallbackQuery, callback_data: EmployeeCB, state: FSMContext) -> None:
-    employees = await run_db(services.employees_with_schedule)
+    data = await state.get_data()
+    employees = await run_db(services.employees_with_schedule, data.get("service_id"))
     chosen = next((e for e in employees if e["id"] == callback_data.employee_id), None)
     if chosen is None:
         await call.answer(texts.SOMETHING_WRONG, show_alert=True)
@@ -90,16 +91,8 @@ async def calendar_noop(call: CallbackQuery) -> None:
 @router.callback_query(Booking.day, CalendarCB.filter(F.action.in_({"prev", "next"})))
 async def flip_month(call: CallbackQuery, callback_data: CalendarCB, state: FSMContext) -> None:
     data = await state.get_data()
-    weekdays = await run_db(services.working_weekdays, data["employee_id"])
-    min_date, max_date = services.horizon()
     await call.message.edit_reply_markup(
-        reply_markup=build_calendar(
-            callback_data.year,
-            callback_data.month,
-            allowed_weekdays=weekdays,
-            min_date=min_date,
-            max_date=max_date,
-        )
+        reply_markup=await calendar_markup(data["employee_id"], callback_data.year, callback_data.month)
     )
     await call.answer()
 

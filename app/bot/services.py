@@ -10,16 +10,20 @@ booking_flow про клиентов ничего не знает.
 
 from datetime import date, datetime, time, timedelta
 
+from decimal import Decimal
+
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.booking import Booking
 from app.models.client import Client
 from app.models.employee import Employee
-from app.models.enums import BOOKED, SOURCE_TELEGRAM
+from app.models.enums import BOOKED, EXC_BLOCK, EXC_DAY_OFF, EXC_EXTRA, SOURCE_TELEGRAM
 from app.models.schedule import Schedule
+from app.models.schedule_exception import ScheduleException
 from app.models.service import Service
 from app.services import booking_flow, booking_service
+from app.services.app_settings_service import COMPANY, get_setting
 from app.services.schedule_service import local_now, local_tz
 
 # Насколько вперёд клиенту разрешено записываться
@@ -53,38 +57,81 @@ def set_phone(db: Session, client_id: int, phone: str) -> None:
         db.commit()
 
 
-# ==== Справочники ====
+# ==== Компания и справочники ====
+
+def company_profile(db: Session) -> dict:
+    return get_setting(db, COMPANY)
+
+
+def price_label(price: Decimal | float | None, currency: str = "") -> str:
+    """Цена для клиента: NULL — «по договорённости», 0 — «бесплатно»."""
+    if price is None:
+        return "по договорённости"
+    if price == 0:
+        return "бесплатно"
+    amount = f"{float(price):,.0f}".replace(",", " ")
+    return f"{amount} {currency}".strip()
+
 
 def active_services(db: Session) -> list[dict]:
     rows = db.scalars(
-        select(Service).where(Service.is_active.is_(True)).order_by(Service.name)
+        select(Service)
+        .where(Service.is_active.is_(True), Service.archived_at.is_(None))
+        .order_by(Service.sort_order, Service.name)
     ).all()
+    currency = company_profile(db).get("currency") or ""
     return [
         {
             "id": s.id,
             "name": s.name,
             "duration": s.duration_minutes,
             "price": float(s.price) if s.price is not None else None,
+            "price_label": price_label(s.price, currency),
             "description": s.description,
         }
         for s in rows
     ]
 
 
-def employees_with_schedule(db: Session) -> list[dict]:
-    """Сотрудники, у которых есть хотя бы один рабочий день, — иначе записаться не к кому."""
+def employees_with_schedule(db: Session, service_id: int | None = None) -> list[dict]:
+    """Сотрудники, к которым можно записаться (на услугу service_id, если задана).
+
+    Нужен рабочий день в расписании или будущее дополнительное окно — иначе
+    записаться не к кому. У сотрудника без привязанных услуг — все услуги.
+    """
     rows = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.name)
+        select(Employee)
+        .options(selectinload(Employee.services))
+        .where(Employee.is_active.is_(True), Employee.archived_at.is_(None))
+        .order_by(Employee.name)
     ).all()
+    today = local_now().date()
     result = []
     for e in rows:
+        linked = [s.id for s in e.services]
+        if service_id and linked and service_id not in linked:
+            continue
         has_schedule = db.scalar(
             select(Schedule.id).where(
                 Schedule.employee_id == e.id, Schedule.is_active.is_(True)
             ).limit(1)
+        ) or db.scalar(
+            select(ScheduleException.id).where(
+                ScheduleException.employee_id == e.id,
+                ScheduleException.kind == EXC_EXTRA,
+                ScheduleException.date_to >= today,
+            ).limit(1)
         )
         if has_schedule:
-            result.append({"id": e.id, "name": e.name, "specialization": e.specialization})
+            result.append(
+                {
+                    "id": e.id,
+                    "name": e.name,
+                    "specialization": e.specialization,
+                    "bio": e.bio,
+                    "service_ids": linked,
+                }
+            )
     return result
 
 
@@ -96,6 +143,35 @@ def working_weekdays(db: Session, employee_id: int) -> set[int]:
         )
     ).all()
     return set(rows)
+
+
+def open_days(db: Session, employee_id: int, first: date, last: date) -> set[date]:
+    """Даты, которые можно нажать в календаре: рабочие дни с учётом исключений.
+
+    Считается по расписанию, а не по свободным слотам — занятость проверяется
+    уже после выбора дня, иначе календарь дёргал бы Google на каждую дату.
+    """
+    weekdays = working_weekdays(db, employee_id)
+    exceptions = db.scalars(
+        select(ScheduleException).where(
+            ScheduleException.employee_id == employee_id,
+            ScheduleException.date_to >= first,
+            ScheduleException.date_from <= last,
+        )
+    ).all()
+    days: set[date] = set()
+    day = first
+    while day <= last:
+        covering = [x for x in exceptions if x.date_from <= day <= x.date_to]
+        closed = any(
+            x.kind == EXC_DAY_OFF or (x.kind == EXC_BLOCK and not (x.start_time and x.end_time))
+            for x in covering
+        )
+        extra = any(x.kind == EXC_EXTRA and x.start_time and x.end_time for x in covering)
+        if not closed and (day.weekday() in weekdays or extra):
+            days.add(day)
+        day += timedelta(days=1)
+    return days
 
 
 def free_times(
