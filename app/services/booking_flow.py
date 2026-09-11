@@ -202,6 +202,46 @@ def cancel(
     return booking, google
 
 
+def restore(
+    db: Session,
+    booking_id: int,
+    *,
+    actor: str,
+    user_id: int | None = None,
+) -> tuple[Booking, GoogleResult]:
+    """Возвращает запись в работу с проверкой занятости.
+
+    Отмена удалила событие Google — для отменённой записи заводим новое. Завершённая
+    или «неявка» своё событие сохранили: его не считаем занятостью и не дублируем.
+    """
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise booking_service.NotFoundError("Запись не найдена")
+    was_cancelled = booking.status == CANCELLED
+    busy = _google_busy(db, booking.employee_id, booking.start_at.astimezone(local_tz()).date())
+    if not was_cancelled:
+        busy = _without_own_event(busy, booking)
+    booking = booking_service.restore_booking(db, booking_id, busy_intervals=busy)
+
+    google: GoogleResult = None
+    if was_cancelled:
+        # Событие пишем в текущий рабочий календарь: его могли сменить, пока запись была отменена
+        booking.google_event_id = None
+        booking.calendar_id = None
+        db.commit()
+        google = _safe_push(db, booking, "restore", calendar_service.push_booking)
+    log_action(
+        db,
+        actor=actor,
+        action="booking.restored",
+        entity_type="booking",
+        entity_id=booking.id,
+        user_id=user_id,
+        details={"start": booking.start_at.isoformat(), "google_event": booking.google_event_id},
+    )
+    return booking, google
+
+
 def set_status(
     db: Session,
     booking_id: int,
@@ -210,9 +250,11 @@ def set_status(
     actor: str,
     user_id: int | None = None,
 ) -> tuple[Booking, GoogleResult]:
-    """Смена статуса. Отмена идёт полным путём (с удалением события), остальное — только БД."""
+    """Смена статуса. Отмена и возврат идут полным путём (Google + проверки), остальное — только БД."""
     if status == CANCELLED:
         return cancel(db, booking_id, actor=actor, user_id=user_id)
+    if status == BOOKED:
+        return restore(db, booking_id, actor=actor, user_id=user_id)
     booking = booking_service.set_booking_status(db, booking_id, status)
     log_action(
         db,

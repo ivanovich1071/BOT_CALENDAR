@@ -189,6 +189,29 @@ def reschedule_booking(
                 pass
 
 
+def restore_booking(
+    db: Session,
+    booking_id: int,
+    *,
+    busy_intervals: list[tuple[datetime, datetime]] | None = None,
+) -> Booking:
+    """Возвращает запись в «Активна». Пока она была отменена, время могли занять."""
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise NotFoundError("Запись не найдена")
+    if booking.status == BOOKED:
+        return booking
+    if _db_overlap(db, booking.employee_id, booking.start_at, booking.end_at, exclude_booking_id=booking.id):
+        raise SlotTakenError("Время уже занято")
+    for bs, be in busy_intervals or []:
+        if booking.start_at < be and bs < booking.end_at:
+            raise SlotTakenError("Время занято в Google Calendar")
+    booking.status = BOOKED
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
 def set_booking_status(db: Session, booking_id: int, status: str) -> Booking:
     if status not in (BOOKED, CANCELLED, COMPLETED, NO_SHOW):
         raise BookingError("Недопустимый статус")

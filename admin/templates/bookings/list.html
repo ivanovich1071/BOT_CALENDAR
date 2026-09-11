@@ -51,14 +51,17 @@
               <input type="hidden" name="status" value="no_show">
               <button class="text-amber-600 hover:underline">Неявка</button>
             </form>
-            {% endif %}
-            {% if user.has_permission('delete_booking') %}
             <form method="post" action="/admin/bookings/{{ b.id }}/status" class="inline"
-                  hx-confirm="Отменить запись #{{ b.id }}?">
+                  onsubmit="return confirm('Отменить запись #{{ b.id }}?')">
               <input type="hidden" name="status" value="cancelled">
               <button class="text-rose-600 hover:underline">Отменить</button>
             </form>
             {% endif %}
+          {% elif user.has_permission('edit_booking') %}
+            <form method="post" action="/admin/bookings/{{ b.id }}/status" class="inline">
+              <input type="hidden" name="status" value="booked">
+              <button class="text-sky-600 hover:underline">Вернуть в активные</button>
+            </form>
           {% endif %}
         </td>
       </tr>

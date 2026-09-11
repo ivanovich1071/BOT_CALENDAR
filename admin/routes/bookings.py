@@ -267,15 +267,21 @@ async def change_status(
     if status not in BOOKING_STATUSES:
         return redirect("/admin/bookings", err="Неверный статус")
     try:
-        _booking, google = booking_flow.set_status(
+        booking, google = booking_flow.set_status(
             db, booking_id, status, actor=user.login, user_id=user.id
         )
     except booking_service.NotFoundError:
         return redirect("/admin/bookings", err="Запись не найдена")
+    except booking_service.SlotTakenError:
+        return redirect("/admin/bookings", err="Вернуть нельзя: это время уже занято")
 
-    message = (
-        "Статус обновлён, но событие в Google Calendar не удалено"
-        if google is False
-        else "Статус обновлён"
-    )
-    return redirect("/admin/bookings", ok=message)
+    back = f"/admin/bookings?date={booking.start_at.astimezone(local_tz()).date().isoformat()}"
+    if google is False:
+        message = (
+            "Запись возвращена, но событие в Google Calendar не создано"
+            if status == "booked"
+            else "Статус обновлён, но событие в Google Calendar не удалено"
+        )
+    else:
+        message = "Запись возвращена" if status == "booked" else "Статус обновлён"
+    return redirect(back, ok=message)

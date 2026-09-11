@@ -162,6 +162,25 @@ def test_freebusy_превращается_в_интервалы(db, employee, g
     ]
 
 
+def test_занятость_только_по_рабочему_календарю(db, employee, google, monkeypatch):
+    account, _primary = google
+    work = Calendar(
+        google_account_id=account.id, google_calendar_id="work@group", calendar_name="Рабочий"
+    )
+    db.add(work)
+    db.commit()
+    employee.default_calendar_id = work.id
+    db.commit()
+    asked: list[list[str]] = []
+    _use(monkeypatch, FakeEvents())
+    monkeypatch.setattr(
+        calendar_service.calendar_api, "freebusy", lambda _service, ids, *_a: asked.append(ids) or []
+    )
+    start = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    calendar_service.get_busy_intervals(db, employee.id, start, start + timedelta(days=1))
+    assert asked == [["work@group"]]
+
+
 def test_без_подключённого_аккаунта_занятость_пустая(db, employee):
     start = datetime(2026, 9, 10, tzinfo=timezone.utc)
     assert calendar_service.get_busy_intervals(db, employee.id, start, start) == []

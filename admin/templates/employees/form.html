@@ -38,6 +38,13 @@
   </fieldset>
   {% endif %}
 
+  {% if employee %}
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="is_active" {{ 'checked' if employee.is_active }} class="rounded">
+    Активен {% if linked_user %}(может входить и работать){% else %}(виден в боте, к нему можно записаться){% endif %}
+  </label>
+  {% endif %}
+
   {% if employee and linked_user %}
   <fieldset class="border border-slate-200 rounded-lg p-4">
     <legend class="text-sm font-medium px-1">Права доступа (дополнительно к роли {{ linked_user.role }})</legend>
@@ -51,14 +58,10 @@
     </div>
   </fieldset>
 
-  <label class="flex items-center gap-2 text-sm">
-    <input type="checkbox" name="is_active" {{ 'checked' if employee.is_active }} class="rounded"> Активен (может входить и работать)
-  </label>
-
   <div class="border border-slate-200 rounded-lg p-4">
     <div class="text-sm font-medium mb-2">Сброс пароля ({{ linked_user.login }})</div>
     <div class="flex gap-2">
-      <input type="password" name="new_password" placeholder="Новый пароль" form="resetpw" class="border border-slate-300 rounded-lg px-3 py-2 flex-1">
+      <input type="password" name="password" placeholder="Новый пароль (мин. 8)" form="resetpw" class="border border-slate-300 rounded-lg px-3 py-2 flex-1">
       <button form="resetpw" class="bg-amber-500 text-white rounded-lg px-4 py-2 text-sm hover:bg-amber-600">Сбросить</button>
     </div>
   </div>

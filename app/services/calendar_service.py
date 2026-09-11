@@ -181,39 +181,31 @@ def employee_calendars(db: Session, employee_id: int) -> list[Calendar]:
 def get_busy_intervals(
     db: Session, employee_id: int, start_utc: datetime, end_utc: datetime
 ) -> list[tuple[datetime, datetime]]:
-    """Занятые интервалы по всем календарям сотрудника. Ошибки Google → [] с логом."""
+    """Занятые интервалы рабочего календаря сотрудника. Ошибки Google → [] с логом.
+
+    Смотрим только рабочий календарь, а не все календари аккаунта: один Google-аккаунт
+    может быть подключён нескольким сотрудникам, у каждого свой календарь, и запись
+    к одному не должна закрывать это время у остальных.
+    """
     busy: list[tuple[datetime, datetime]] = []
-    accounts = db.scalars(
-        select(GoogleAccount).where(GoogleAccount.employee_id == employee_id)
-    ).all()
-    if not accounts:
+    calendar = default_calendar(db, employee_id)
+    if calendar is None:
         return busy
-    for account in accounts:
-        cals = db.scalars(
-            select(Calendar).where(
-                Calendar.google_account_id == account.id, Calendar.is_active.is_(True)
-            )
-        ).all()
-        if not cals:
-            continue
-        creds = _credentials_for(db, account)
-        if creds is None:
-            continue
-        try:
-            service = calendar_api.build_service(creds)
-            slots = calendar_api.freebusy(
-                service,
-                [c.google_calendar_id for c in cals],
-                start_utc.isoformat(),
-                end_utc.isoformat(),
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception("freebusy не удался для аккаунта #%s", account.id)
-            continue
-        for b in slots:
-            s = as_utc(datetime.fromisoformat(b["start"].replace("Z", "+00:00")))
-            e = as_utc(datetime.fromisoformat(b["end"].replace("Z", "+00:00")))
-            busy.append((s, e))
+    creds = _credentials_for(db, db.get(GoogleAccount, calendar.google_account_id))
+    if creds is None:
+        return busy
+    try:
+        service = calendar_api.build_service(creds)
+        slots = calendar_api.freebusy(
+            service, [calendar.google_calendar_id], start_utc.isoformat(), end_utc.isoformat()
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("freebusy не удался для календаря #%s", calendar.id)
+        return busy
+    for b in slots:
+        s = as_utc(datetime.fromisoformat(b["start"].replace("Z", "+00:00")))
+        e = as_utc(datetime.fromisoformat(b["end"].replace("Z", "+00:00")))
+        busy.append((s, e))
     return busy
 
 

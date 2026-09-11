@@ -51,6 +51,16 @@ async def calendars_page(
                 "active_calendar": active,
             }
         )
+    # Один рабочий календарь у нескольких сотрудников — занятость у них общая
+    by_calendar: dict[str, list[str]] = {}
+    for item in items:
+        cal = item["active_calendar"]
+        if cal is not None and item["employee"].is_active:
+            by_calendar.setdefault(cal.google_calendar_id, []).append(item["employee"].name)
+    for item in items:
+        cal = item["active_calendar"]
+        names = by_calendar.get(cal.google_calendar_id, []) if cal is not None else []
+        item["shared_with"] = [n for n in names if n != item["employee"].name]
     return render(
         request,
         "calendars/list.html",
